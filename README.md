@@ -18,6 +18,14 @@ GitHub Pages enforces HTTPS. Some legacy Cydia clients may not support its TLS/c
 
 Requires a rootful jailbreak and Cydia Substrate. The jailbreak must permit access to `/var/mobile/Media/Receptor/`. No global sandbox patch or certificate-validation bypass is installed. A compatible AppSync setup may be needed for IPAs that are not validly signed for the device; it is not installed automatically.
 
+## Send DEBs from Windows (1.3.0)
+
+Download **ReceptorDesktop.exe** from the [1.3.0 release](https://github.com/jajaengland/Receptor/releases/tag/v1.3.0) and upgrade Receptor in Cydia. On the PC, choose your Wi-Fi address, click **Start sharing**, then **Add DEBs…**. On the iPad/iPhone, open Receptor → **Desktop**, enter the displayed address and pairing code, and tap **Connect / Refresh**. Tap a DEB to receive it, then confirm **Install** on the device. **Keep File** saves it for later instead.
+
+Both devices must be on the same private IPv4 network. Keep both apps open and permit the desktop app through Windows Firewall on the private network if asked. No Safari access to the original download website, SSH setup or device password is required. Receptor must already be installed. Windows 10/11 includes the .NET Framework 4.x runtime used by the portable, unsigned EXE; no desktop installation is needed.
+
+Pairing uses a new random code each sharing session. The code stays off the network; HMAC-SHA256 authenticates the package list and transfers, and Receptor checks the expected SHA-256 and size before offering installation. Local HTTP transfers are **not encrypted**. Only explicitly selected DEBs are shared, and the PC cannot initiate installation without confirmation on the device. Stop sharing to revoke the code. The PC's “Sent” message is a transfer result; use Receptor's **Install Log** for the actual installation result. See [desktop usage, protocol and build instructions](Desktop/README.md).
+
 ## Using Receptor
 
 - **Safari:** tap a downloadable link and choose Download. Completion alerts offer **Open Receptor**. The floating Files window from 1.0.0 has been removed.
@@ -69,6 +77,7 @@ The local `lib/libLegacySubstrate.tbd` is a link-time interface pointing to `/us
 | `App/`, `FileBrowserViewController.*` | Home screen app, URL downloads, files, previews and install UI |
 | `RCIPAInstaller.*` | Guarded dynamic lookup of `MobileInstallationInstall` on supported legacy firmware |
 | `RCDEBInstaller.*`, `Tools/receptor-deb-helper.c` | Confirmed local DEB installation, bounded output/logging and fixed-operation root helper |
+| `Desktop/`, `RCCompanionClient.*`, `RCCompanionViewController.*` | Windows Wi-Fi DEB sharing, authenticated transfer and on-device installation consent |
 | `ReceptorUI.*`, `ReceptorPaths.*` | Consent/notifications, app launching, storage and filename handling |
 | `vendor/tls/`, `layout/` | Armv7 TLS libraries, CA roots, licenses and package scripts |
 | `docs/`, `scripts/update-repository.py` | Flat Cydia repository and deterministic compressed indexes |
@@ -90,6 +99,8 @@ The root helper is limited to package installation and is not a general privileg
 1.2.0 compiles, links, signs and packages for armv7 with SDK 5.0 and an iOS 4.0 minimum. Package checks validate the app manifest, executable headers, icon resources, CA bundle, tweak, root helper and repository checksums. Native Linux tests of the same curl/Mbed TLS versions pass TLS 1.2 downloads and redirects and reject untrusted issuers and wrong hostnames. The transport also successfully retrieved response bodies from Archive.org and GitHub Pages. An Obscura-linked VLC IPA endpoint reached its storage host but returned HTTP 500 during testing; successful TLS does not guarantee an archive file is available.
 
 **Physical-device validation is still required**, particularly on the reported iPad 1 / iOS 5.1.1. Compilation and native transport tests cannot certify private Safari hooks, Home screen registration or installation/signing behavior on the device.
+
+1.3.0 adds the Windows companion and compiles the iOS pairing client against SDK 5.0 for armv7/iOS 4. Protocol integration tests exercise the actual Windows server, authentication/replay rejection, streamed immutable file contents, malformed requests and shutdown. The desktop form has been rendered for layout inspection. Pairing, receiving and installation through the new iOS screen still need testing on the physical device.
 
 Latest user-reported iPad 1 / iOS 5.1.1 results: three IPA downloads completed and one installed app launched. Two other app launch failures remain unexplained; compatibility, signing and other app-specific causes have not been established. DEB installation appearing in Cydia has not yet been confirmed on-device. Treat the current release as experimental and the full iOS 4–6 range as intended targets rather than a validated support matrix.
 

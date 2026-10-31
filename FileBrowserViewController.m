@@ -4,6 +4,7 @@
 #import "DownloadManager.h"
 #import "RCIPAInstaller.h"
 #import "RCDEBInstaller.h"
+#import "RCCompanionViewController.h"
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
@@ -49,7 +50,9 @@ static BOOL RCInstallingPackage(void) {
         target:self action:@selector(showInstallLog)] autorelease];
     UIBarButtonItem *cydia = [[[UIBarButtonItem alloc] initWithTitle:@"Cydia" style:UIBarButtonItemStylePlain
         target:self action:@selector(openCydia)] autorelease];
-    self.toolbarItems = [NSArray arrayWithObjects:refresh, log, space, cydia, nil];
+    UIBarButtonItem *desktop = [[[UIBarButtonItem alloc] initWithTitle:@"Desktop" style:UIBarButtonItemStylePlain
+        target:self action:@selector(openDesktop)] autorelease];
+    self.toolbarItems = [NSArray arrayWithObjects:refresh, log, space, desktop, cydia, nil];
     [self reloadFiles];
 }
 - (void)viewWillAppear:(BOOL)animated {
@@ -85,6 +88,11 @@ static BOOL RCInstallingPackage(void) {
     if (![[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cydia://"]]) {
         [[ReceptorUI sharedUI] showMessage:@"Cydia could not be opened on this device."];
     }
+}
+- (void)openDesktop {
+    RCCompanionViewController *controller = [[RCCompanionViewController alloc] init];
+    [self.navigationController pushViewController:controller animated:YES];
+    [controller release];
 }
 - (void)addURL {
     if (_URLPrompt) return;

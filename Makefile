@@ -16,7 +16,7 @@ Receptor_CFLAGS = -fno-objc-arc -fblocks -Wall -Wextra -I$(THEOS_PROJECT_DIR)/ve
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 APPLICATION_NAME = ReceptorApp
-ReceptorApp_FILES = App/main.m App/RCAppDelegate.m ReceptorUI.m ReceptorPaths.m DownloadManager.m RCCurlTransfer.m FileBrowserViewController.m RCIPAInstaller.m RCDEBInstaller.m
+ReceptorApp_FILES = App/main.m App/RCAppDelegate.m ReceptorUI.m ReceptorPaths.m DownloadManager.m RCCurlTransfer.m FileBrowserViewController.m RCIPAInstaller.m RCDEBInstaller.m RCCompanionClient.m RCCompanionViewController.m
 ReceptorApp_FRAMEWORKS = UIKit Foundation QuickLook MobileCoreServices
 ReceptorApp_LIBRARIES = curl mbedtls mbedx509 mbedcrypto
 ReceptorApp_LDFLAGS = -L$(THEOS_PROJECT_DIR)/vendor/tls/lib
