@@ -8,7 +8,7 @@
     UIDocumentInteractionController *_documentController;
     NSString *_storageError;
     UIActionSheet *_fileActions;
-    NSString *_selectedIPA;
+    NSString *_selectedPackage;
     UIAlertView *_installPrompt;
     UIAlertView *_URLPrompt;
     UITextField *_URLField;

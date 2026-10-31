@@ -16,7 +16,7 @@ Receptor_CFLAGS = -fno-objc-arc -fblocks -Wall -Wextra -I$(THEOS_PROJECT_DIR)/ve
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 APPLICATION_NAME = ReceptorApp
-ReceptorApp_FILES = App/main.m App/RCAppDelegate.m ReceptorUI.m ReceptorPaths.m DownloadManager.m RCCurlTransfer.m FileBrowserViewController.m RCIPAInstaller.m
+ReceptorApp_FILES = App/main.m App/RCAppDelegate.m ReceptorUI.m ReceptorPaths.m DownloadManager.m RCCurlTransfer.m FileBrowserViewController.m RCIPAInstaller.m RCDEBInstaller.m
 ReceptorApp_FRAMEWORKS = UIKit Foundation QuickLook MobileCoreServices
 ReceptorApp_LIBRARIES = curl mbedtls mbedx509 mbedcrypto
 ReceptorApp_LDFLAGS = -L$(THEOS_PROJECT_DIR)/vendor/tls/lib
@@ -26,3 +26,12 @@ ReceptorApp_RESOURCE_FILES = App/Info.plist
 ReceptorApp_RESOURCE_DIRS = App/Resources
 ReceptorApp_CODESIGN_FLAGS = -SApp/Entitlements.plist
 include $(THEOS_MAKE_PATH)/application.mk
+
+TOOL_NAME = receptor-deb-helper
+receptor-deb-helper_FILES = Tools/receptor-deb-helper.c
+receptor-deb-helper_INSTALL_PATH = /usr/libexec
+receptor-deb-helper_CFLAGS = -std=gnu99 -Wall -Wextra
+include $(THEOS_MAKE_PATH)/tool.mk
+
+after-stage::
+	chmod 4755 "$(THEOS_STAGING_DIR)/usr/libexec/receptor-deb-helper"

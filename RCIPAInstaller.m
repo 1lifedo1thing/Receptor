@@ -1,6 +1,7 @@
 #import "RCIPAInstaller.h"
 #import "ReceptorPaths.h"
 #import "ReceptorUI.h"
+#import "RCDEBInstaller.h"
 #include <dlfcn.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -35,7 +36,7 @@ static void RCInstallProgress(CFDictionaryRef information) {
 }
 - (void)installFileNamed:(NSString *)name {
     NSAssert([NSThread isMainThread], @"Main thread required");
-    if (_busy) { [[ReceptorUI sharedUI] showMessage:@"An installation is already running."]; return; }
+    if (_busy || [[RCDEBInstaller sharedInstaller] busy]) { [[ReceptorUI sharedUI] showMessage:@"An installation is already running."]; return; }
     if (!RCIsRegularDownload(name) || ![[[name pathExtension] lowercaseString] isEqual:@"ipa"]) {
         [[ReceptorUI sharedUI] showMessage:@"Choose a saved IPA file."]; return;
     }

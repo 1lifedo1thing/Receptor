@@ -53,3 +53,22 @@ MD5sum: a98dcddc7cdf31d5a72a175ab56b99d0
 SHA1: ec92604b645e81c17b18ebf42b11e6d43d33604b
 SHA256: 5b747205e5e4dde5d34f178921d11fa8db0db3f0dd47f6aa42e93c46e8d5a5c3
 
+Package: com.receptor.downloadmanager
+Name: Receptor
+Description: Safari downloads, a standalone file browser, and IPA/DEB installation for iOS 4 through 6.
+Maintainer: Receptor
+Author: Receptor
+Section: Tweaks
+Depends: mobilesubstrate, dpkg, firmware (>= 4.0), firmware (<< 7.0)
+Homepage: https://github.com/jajaengland/Receptor
+Depiction: https://jajaengland.github.io/Receptor/depictions/receptor.html
+Icon: https://jajaengland.github.io/Receptor/icon.png
+Architecture: iphoneos-arm
+Version: 1.2.0
+Installed-Size: 2244
+Filename: debs/com.receptor.downloadmanager_1.2.0_iphoneos-arm.deb
+Size: 745708
+MD5sum: 4c774b877b952f7711799e43cec13412
+SHA1: 0330204c8b24c7b5939c516926daf1e4927295be
+SHA256: e17d09ec18c90234a430729eaa262c11047e0169d4183de1f4954e25a6a706c0
+

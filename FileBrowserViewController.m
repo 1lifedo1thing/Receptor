@@ -3,6 +3,7 @@
 #import "ReceptorUI.h"
 #import "DownloadManager.h"
 #import "RCIPAInstaller.h"
+#import "RCDEBInstaller.h"
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
@@ -13,6 +14,9 @@ static NSString *RCByteCount(long long bytes) {
     if (bytes < 1024LL * 1024) return [NSString stringWithFormat:@"%.1f KB", bytes / 1024.0];
     if (bytes < 1024LL * 1024 * 1024) return [NSString stringWithFormat:@"%.1f MB", bytes / (1024.0 * 1024.0)];
     return [NSString stringWithFormat:@"%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0)];
+}
+static BOOL RCInstallingPackage(void) {
+    return [[RCIPAInstaller sharedInstaller] busy] || [[RCDEBInstaller sharedInstaller] busy];
 }
 
 @interface FileBrowserViewController ()
@@ -41,9 +45,11 @@ static NSString *RCByteCount(long long bytes) {
         UIBarButtonSystemItemRefresh target:self action:@selector(reloadFiles)] autorelease];
     UIBarButtonItem *space = [[[UIBarButtonItem alloc] initWithBarButtonSystemItem:
         UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
-    UIBarButtonItem *label = [[[UIBarButtonItem alloc] initWithTitle:@"Downloads" style:UIBarButtonItemStylePlain
-        target:nil action:NULL] autorelease];
-    self.toolbarItems = [NSArray arrayWithObjects:refresh, space, label, nil];
+    UIBarButtonItem *log = [[[UIBarButtonItem alloc] initWithTitle:@"Install Log" style:UIBarButtonItemStylePlain
+        target:self action:@selector(showInstallLog)] autorelease];
+    UIBarButtonItem *cydia = [[[UIBarButtonItem alloc] initWithTitle:@"Cydia" style:UIBarButtonItemStylePlain
+        target:self action:@selector(openCydia)] autorelease];
+    self.toolbarItems = [NSArray arrayWithObjects:refresh, log, space, cydia, nil];
     [self reloadFiles];
 }
 - (void)viewWillAppear:(BOOL)animated {
@@ -56,7 +62,29 @@ static NSString *RCByteCount(long long bytes) {
 }
 - (void)installationChanged:(NSNotification *)notification {
     (void)notification;
-    self.navigationItem.prompt = [[RCIPAInstaller sharedInstaller] status];
+    self.navigationItem.prompt = [[RCDEBInstaller sharedInstaller] busy] ? [[RCDEBInstaller sharedInstaller] status] : [[RCIPAInstaller sharedInstaller] status];
+}
+- (void)showInstallLog {
+    if ([[RCDEBInstaller sharedInstaller] busy]) {
+        [[ReceptorUI sharedUI] showMessage:@"The DEB installation is still running. Its log will be available when the package manager finishes."];
+        return;
+    }
+    UIViewController *controller = [[UIViewController alloc] init];
+    controller.title = @"DEB Install Log";
+    UITextView *text = [[UITextView alloc] initWithFrame:self.view.bounds];
+    text.editable = NO;
+    text.font = [UIFont fontWithName:@"Courier" size:12.0f];
+    text.text = [[RCDEBInstaller sharedInstaller] lastOutput] ?: @"No DEB installation has completed yet.";
+    text.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    controller.view = text;
+    [text release];
+    [self.navigationController pushViewController:controller animated:YES];
+    [controller release];
+}
+- (void)openCydia {
+    if (![[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cydia://"]]) {
+        [[ReceptorUI sharedUI] showMessage:@"Cydia could not be opened on this device."];
+    }
 }
 - (void)addURL {
     if (_URLPrompt) return;
@@ -135,11 +163,12 @@ static NSString *RCByteCount(long long bytes) {
     if ([indexPath section] == 0) return;
     NSString *name = [_files objectAtIndex:[indexPath row]];
     if (!RCIsRegularDownload(name)) { [self reloadFiles]; return; }
-    if ([[[name pathExtension] lowercaseString] isEqual:@"ipa"]) {
+    NSString *extension = [[name pathExtension] lowercaseString];
+    if ([extension isEqual:@"ipa"] || [extension isEqual:@"deb"]) {
         if (_fileActions || _installPrompt) return;
-        [_selectedIPA release]; _selectedIPA = [name copy];
+        [_selectedPackage release]; _selectedPackage = [name copy];
         _fileActions = [[UIActionSheet alloc] initWithTitle:name delegate:self cancelButtonTitle:@"Cancel"
-            destructiveButtonTitle:nil otherButtonTitles:@"Install IPA", @"Open In…", nil];
+            destructiveButtonTitle:nil otherButtonTitles:[extension isEqual:@"deb"] ? @"Install DEB" : @"Install IPA", @"Open In…", nil];
         [_fileActions showFromRect:[tableView rectForRowAtIndexPath:indexPath] inView:tableView animated:YES];
         return;
     }
@@ -165,31 +194,36 @@ static NSString *RCByteCount(long long bytes) {
     }
 }
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    (void)tableView; return [indexPath section] == 0 || ![[RCIPAInstaller sharedInstaller] busy];
+    (void)tableView; return [indexPath section] == 0 || !RCInstallingPackage();
 }
 - (void)actionSheet:(UIActionSheet *)sheet didDismissWithButtonIndex:(NSInteger)buttonIndex {
     if (sheet != _fileActions) return;
     [_fileActions autorelease]; _fileActions = nil;
     if (buttonIndex == 0) {
-        NSString *message = [NSString stringWithFormat:@"Install %@? This may replace an existing version of the app. The IPA must be compatible with your device and signing setup.", _selectedIPA];
-        _installPrompt = [[UIAlertView alloc] initWithTitle:@"Install IPA" message:message delegate:self
+        BOOL deb = [[[_selectedPackage pathExtension] lowercaseString] isEqual:@"deb"];
+        NSString *message = deb ? [NSString stringWithFormat:@"Install %@ with Cydia's package manager? Packages can run scripts as root. Close Cydia before continuing. Missing dependencies must be installed through Cydia.", _selectedPackage] :
+            [NSString stringWithFormat:@"Install %@? This may replace an existing version of the app. The IPA must be compatible with your device and signing setup.", _selectedPackage];
+        _installPrompt = [[UIAlertView alloc] initWithTitle:deb ? @"Install DEB" : @"Install IPA" message:message delegate:self
             cancelButtonTitle:@"Cancel" otherButtonTitles:@"Install", nil];
         [_installPrompt show];
-    } else if (buttonIndex == 1 && RCIsRegularDownload(_selectedIPA)) {
+    } else if (buttonIndex == 1 && RCIsRegularDownload(_selectedPackage)) {
         [_documentController dismissMenuAnimated:NO];
         _documentController.delegate = nil; [_documentController release];
-        NSURL *url = [NSURL fileURLWithPath:[RCDownloadsDirectory stringByAppendingPathComponent:_selectedIPA]];
+        NSURL *url = [NSURL fileURLWithPath:[RCDownloadsDirectory stringByAppendingPathComponent:_selectedPackage]];
         _documentController = [[UIDocumentInteractionController interactionControllerWithURL:url] retain];
         _documentController.delegate = self;
         if (![_documentController presentOptionsMenuFromRect:self.view.bounds inView:self.view animated:YES]) {
-            [[ReceptorUI sharedUI] showMessage:@"No installed application can open this IPA."];
+            [[ReceptorUI sharedUI] showMessage:@"No installed application can open this package."];
         }
     }
 }
 - (void)alertView:(UIAlertView *)alert didDismissWithButtonIndex:(NSInteger)index {
     if (alert == _installPrompt) {
         [_installPrompt autorelease]; _installPrompt = nil;
-        if (index == 1) [[RCIPAInstaller sharedInstaller] installFileNamed:_selectedIPA];
+        if (index == 1) {
+            if ([[[_selectedPackage pathExtension] lowercaseString] isEqual:@"deb"]) [[RCDEBInstaller sharedInstaller] installFileNamed:_selectedPackage];
+            else [[RCIPAInstaller sharedInstaller] installFileNamed:_selectedPackage];
+        }
     } else if (alert == _URLPrompt) {
         NSString *text = [[_URLField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
         [_URLField release]; _URLField = nil;
@@ -213,7 +247,7 @@ static NSString *RCByteCount(long long bytes) {
         forRowAtIndexPath:(NSIndexPath *)indexPath {
     (void)tableView;
     if (style != UITableViewCellEditingStyleDelete) return;
-    if ([indexPath section] != 0 && [[RCIPAInstaller sharedInstaller] busy]) return;
+    if ([indexPath section] != 0 && RCInstallingPackage()) return;
     if ([indexPath section] == 0) {
         NSString *identifier = [[[_activeDownloads objectAtIndex:[indexPath row]] objectForKey:@"identifier"] copy];
         [[DownloadManager sharedManager] cancelDownloadWithIdentifier:identifier];
@@ -244,7 +278,7 @@ static NSString *RCByteCount(long long bytes) {
     _fileActions.delegate = nil; [_fileActions dismissWithClickedButtonIndex:_fileActions.cancelButtonIndex animated:NO]; [_fileActions release];
     _installPrompt.delegate = nil; [_installPrompt dismissWithClickedButtonIndex:0 animated:NO]; [_installPrompt release];
     _URLPrompt.delegate = nil; [_URLPrompt dismissWithClickedButtonIndex:0 animated:NO]; [_URLPrompt release]; [_URLField release];
-    [_selectedIPA release];
+    [_selectedPackage release];
     [super dealloc];
 }
 @end

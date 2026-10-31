@@ -43,7 +43,8 @@ def main():
         assert "Version: " + fields["Version"] + "\n" in control
         assert "Architecture: iphoneos-arm\n" in control
         with tarfile.open(fileobj=io.BytesIO(payload_data), mode="r:*") as archive:
-            payload = {member.name.lstrip("./"): archive.extractfile(member).read() for member in archive if member.isfile()}
+            members_info = {member.name.lstrip("./"): member for member in archive.getmembers()}
+            payload = {name: archive.extractfile(member).read() for name, member in members_info.items() if member.isfile()}
             names = set(payload)
         assert "Library/MobileSubstrate/DynamicLibraries/Receptor.dylib" in names
         assert "Library/MobileSubstrate/DynamicLibraries/Receptor.plist" in names
@@ -69,6 +70,26 @@ def main():
                     command, size = struct.unpack_from("<II", binary, offset)
                     if command == 0x25:
                         minimum = struct.unpack_from("<II", binary, offset + 8)
+                    offset += size
+                assert minimum == (0x40000, 0x50000)
+            if fields["Version"] == "1.2.0":
+                helper_name = "usr/libexec/receptor-deb-helper"
+                helper = members_info[helper_name]
+                assert helper.uid == 0 and helper.gid == 0 and helper.mode == 0o4755
+                assert b"/Applications/Receptor.app/ReceptorApp" in payload[helper_name]
+                assert b"/usr/bin/dpkg" in payload[helper_name]
+                assert b"csops" in payload[helper_name]
+                assert members_info["Applications/Receptor.app"].uid == 0
+                assert not members_info["Applications/Receptor.app"].mode & 0o022
+                assert not members_info["Applications/Receptor.app/ReceptorApp"].mode & 0o022
+                helper_bytes = payload[helper_name]
+                assert struct.unpack_from("<III", helper_bytes) == (0xfeedface, 12, 9)
+                count = struct.unpack_from("<I", helper_bytes, 16)[0]
+                offset = 28
+                minimum = None
+                for _ in range(count):
+                    command, size = struct.unpack_from("<II", helper_bytes, offset)
+                    if command == 0x25: minimum = struct.unpack_from("<II", helper_bytes, offset + 8)
                     offset += size
                 assert minimum == (0x40000, 0x50000)
     algorithm = None

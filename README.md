@@ -1,6 +1,6 @@
 # Receptor
 
-Safari downloads, a standalone file browser and IPA installation for **jailbroken iOS 4.0–6.1, armv7**. Built with **SDK 5.0**, targeting **iOS 4.0**, using manual reference counting.
+Safari downloads, a standalone file browser and IPA/DEB installation for **jailbroken iOS 4.0–6.1, armv7**. Built with **SDK 5.0**, targeting **iOS 4.0**, using manual reference counting.
 
 ## Install
 
@@ -22,6 +22,7 @@ Requires a rootful jailbreak and Cydia Substrate. The jailbreak must permit acce
 - **Receptor app:** browse completed files, see transfers started in Safari or Receptor, swipe a transfer to cancel, and swipe a saved file to delete. Tap **+** to paste an HTTP(S) file URL and download directly in the app. This is also useful if Safari's own TLS stack cannot reach a page before Receptor receives a policy callback.
 - **Preview:** tap a document for Quick Look or document interaction.
 - **Install IPA:** tap a saved `.ipa`, select **Install IPA**, and confirm. Installation may replace an existing app version. iOS's native installer checks package/device compatibility and signing; Receptor does not decrypt FairPlay-protected apps, forge signatures or force incompatible apps onto the device. Installations run off the UI thread and report progress and the native return code on failure.
+- **Install DEB (1.2.0):** close Cydia, tap a saved `.deb`, choose **Install DEB**, and confirm. Receptor invokes the device's `dpkg`, so successfully installed packages appear in Cydia's **Installed** list after reopening Cydia. **Install Log** shows the last package-manager output, and the toolbar's **Cydia** button opens Cydia. A DEB can run maintainer scripts as root; install only packages you intend to trust. If dependencies are missing, install them through Cydia and retry. A failed install may leave an unpacked/unconfigured package; use Cydia's reported repair/configuration steps. Receptor does not force installation, delete lock files, automatically remove packages, or fetch dependencies. Keep Receptor open and wait for the result; respring afterward if the package requires it.
 
 Each process allows up to three transfers. iOS grants finite background execution, not a persistent background service. Keep the process that started a long download in the foreground: Safari for Safari downloads, Receptor for downloads started with +. There is no automatic resume after the process exits. Active transfers are exchanged using small, hidden status snapshots; cancellation requests are checked by the owning process. Completed user files survive upgrades and uninstall.
 
@@ -65,6 +66,7 @@ The local `lib/libLegacySubstrate.tbd` is a link-time interface pointing to `/us
 | `DownloadManager.*` | Streamed disk writes, active transfers, background tasks, cancellation and status snapshots |
 | `App/`, `FileBrowserViewController.*` | Home screen app, URL downloads, files, previews and install UI |
 | `RCIPAInstaller.*` | Guarded dynamic lookup of `MobileInstallationInstall` on supported legacy firmware |
+| `RCDEBInstaller.*`, `Tools/receptor-deb-helper.c` | Confirmed local DEB installation, bounded output/logging and fixed-operation root helper |
 | `ReceptorUI.*`, `ReceptorPaths.*` | Consent/notifications, app launching, storage and filename handling |
 | `vendor/tls/`, `layout/` | Armv7 TLS libraries, CA roots, licenses and package scripts |
 | `docs/`, `scripts/update-repository.py` | Flat Cydia repository and deterministic compressed indexes |
@@ -73,9 +75,17 @@ The tweak wraps `WebView -setPolicyDelegate:` and forwards optional callbacks to
 
 Files stream into exclusive, mode-0600 hidden partials. Sanitized names cannot create subdirectories or hidden user files. Completed transfers are flushed and atomically published without overwriting existing files; duplicate names receive a numbered suffix. The browser ignores hidden files and symlinks. Handled failures/cancellation remove owned partials; a crash or kill can leave an ignored hidden `.part` file. No archives are unpacked automatically.
 
+### DEB helper
+
+1.2.0 installs `/usr/libexec/receptor-deb-helper` as root:wheel, mode **4755**, because a mobile-user app cannot modify dpkg's system database. The helper accepts one staged basename under the fixed Receptor download directory, verifies owner/type/permissions and rejects symlinks and hardlinks. Non-root callers must be the mobile user and have a kernel-reported caller code-directory hash matching the signed, root-owned installed Receptor app. Failure to verify that identity denies the request. Already-root callers retain their existing privilege.
+
+The helper creates a private root-owned snapshot and runs only `/usr/bin/dpkg --no-act --install SNAPSHOT`, followed by `/usr/bin/dpkg --install SNAPSHOT` if the preflight succeeds. It uses fixed argument vectors and a clean environment, with no command shell or user-provided executable/options. dpkg retains responsibility for architecture/dependency checks, locking and maintainer scripts. The original saved DEB is preserved. The app's staged copy and helper's private files are cleaned after the operation. dpkg writes a regular log file so losing the UI's pipe does not terminate a package transaction; the helper returns a bounded tail of that output. The app stores the last log in a hidden mode-0600 file in the Receptor directory.
+
+The root helper is limited to package installation and is not a general privileged command runner. It never executes an arbitrary path supplied by the caller. IPA and DEB installs cannot overlap within Receptor. Initial installation of 1.2.0 must be done through Cydia (or an existing root package manager) so the helper's ownership and setuid permissions are established.
+
 ## Validation
 
-1.1.0 compiles, links, signs and packages for armv7 with SDK 5.0 and an iOS 4.0 minimum. Package checks validate the app manifest, executable headers, icon resources, CA bundle, tweak and repository checksums. Native Linux tests of the same curl/Mbed TLS versions pass TLS 1.2 downloads and redirects and reject untrusted issuers and wrong hostnames. The transport also successfully retrieved response bodies from Archive.org and GitHub Pages. An Obscura-linked VLC IPA endpoint reached its storage host but returned HTTP 500 during testing; successful TLS does not guarantee an archive file is available.
+1.2.0 compiles, links, signs and packages for armv7 with SDK 5.0 and an iOS 4.0 minimum. Package checks validate the app manifest, executable headers, icon resources, CA bundle, tweak, root helper and repository checksums. Native Linux tests of the same curl/Mbed TLS versions pass TLS 1.2 downloads and redirects and reject untrusted issuers and wrong hostnames. The transport also successfully retrieved response bodies from Archive.org and GitHub Pages. An Obscura-linked VLC IPA endpoint reached its storage host but returned HTTP 500 during testing; successful TLS does not guarantee an archive file is available.
 
 **Physical-device validation is still required**, particularly on the reported iPad 1 / iOS 5.1.1. Compilation and native transport tests cannot certify private Safari hooks, Home screen registration or installation/signing behavior on the device.
 
@@ -83,13 +93,16 @@ Files stream into exclusive, mode-0600 hidden partials. Sanitized names cannot c
 python3 tests/check_project.py
 python3 scripts/update-repository.py
 python3 tests/check_repository.py
+python3 tests/test_deb_helper.py
 bash scripts/build-host-tls-probe.sh
 python3 tests/test_tls_transport.py
 ```
 
 For device HTTP fixtures, run `python3 tests/fixture_server.py --bind 0.0.0.0 --port 8080` on a reachable computer and open its LAN URL in Safari. Check link/MIME interception, cancellation, duplicate/unsafe names, empty/error/truncated responses, cookies, background expiration and stored byte integrity. The slow `.zip` endpoint contains synthetic bytes for transfer tests, not a real archive.
 
-On-device, also verify: the Receptor icon after upgrade; direct URL downloads with +; Safari-to-app transfer status and cancellation; file preview/deletion; IPA Install confirmation, progress and error reporting with a compatible test app; rotation/iPad menus; failed certificates and incorrect date/time; no saved HTML error pages; process kill/relaunch; and MRC behavior with Instruments. Keep a backup before testing an IPA upgrade that replaces an installed app.
+The DEB-helper tests compile an unprivileged Linux-only test build and a fake package manager in a temporary directory. They check preflight/install sequencing, argument/environment isolation, private snapshot preservation, dependency/install failures, symlinks, hardlinks, traversal, permissions, shell metacharacters and bounded log output. They never invoke the host's real dpkg or install a package. Test mode is rejected at compile time on Apple targets. Packaged-helper checks verify root ownership, mode 4755, caller-authentication markers, armv7 and the iOS 4.0/SDK 5.0 load command.
+
+On-device, also verify: the Receptor icon after upgrade; direct URL downloads with +; Safari-to-app transfer status and cancellation; file preview/deletion; IPA Install confirmation/progress/error reporting; DEB confirmation, caller authorization, a harmless compatible DEB appearing in Cydia, Install Log, missing dependencies, an already-held Cydia/dpkg lock and failed maintainer scripts; rotation/iPad menus; failed certificates and incorrect date/time; no saved HTML error pages; process kill/relaunch; and MRC behavior with Instruments. The setuid/caller-code-hash gate and actual iOS dpkg execution cannot be certified by the Linux mock tests. Keep a backup before testing package/app upgrades that replace installed software.
 
 ## References
 
