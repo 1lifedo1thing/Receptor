@@ -6,7 +6,7 @@ Version: 1.0
 Architectures: iphoneos-arm
 Components: main
 Description: Receptor downloads for legacy iOS 4 through 6
-Date: Sat, 31 Oct 2026 21:13:17 GMT
+Date: Sat, 31 Oct 2026 21:22:33 GMT
 MD5Sum:
  0522acc9a285b276692752ec43051de1 3648 Packages
  72e2d1be40c8661266d1861952404747 985 Packages.gz
