@@ -1,6 +1,6 @@
 Package: com.receptor.downloadmanager
 Name: Receptor
-Version: 1.1.0
+Version: 1.1.1
 Architecture: iphoneos-arm
 Description: Safari downloads, a standalone file browser and IPA installation for iOS 4 through 6.
 Maintainer: Receptor
@@ -9,3 +9,4 @@ Section: Tweaks
 Depends: mobilesubstrate, firmware (>= 4.0), firmware (<< 7.0)
 Homepage: https://github.com/jajaengland/Receptor
 Depiction: https://jajaengland.github.io/Receptor/depictions/receptor.html
+Icon: https://jajaengland.github.io/Receptor/icon.png
