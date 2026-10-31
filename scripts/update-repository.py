@@ -80,7 +80,7 @@ def main():
     (output / "Release").write_text("\n".join(release) + "\n", encoding="utf-8", newline="\n")
     (output / ".nojekyll").touch()
     print("Updated flat Cydia repository: " + str(output))
-    print("Source URL: http://jajaengland.github.io/Receptor/")
+    print("Source URL: https://jajaengland.github.io/Receptor/")
 
 
 if __name__ == "__main__":

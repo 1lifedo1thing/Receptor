@@ -9,10 +9,10 @@ Source-complete, rootful Theos tweak for **MobileSafari on iOS 4.0–6.1, armv7*
 Add this source in Cydia → Sources → Edit → Add:
 
 ```text
-http://jajaengland.github.io/Receptor/
+https://jajaengland.github.io/Receptor/
 ```
 
-Refresh, search for **Receptor**, and install. The [repository page](http://jajaengland.github.io/Receptor/) includes a Cydia shortcut and package details. [GitHub releases](https://github.com/jajaengland/Receptor/releases) provide direct `.deb` downloads. The Cydia source uses HTTP for legacy clients; HTTPS is also available for clients that support GitHub Pages TLS.
+Refresh, search for **Receptor**, and install. The [repository page](https://jajaengland.github.io/Receptor/) includes a Cydia shortcut and package details. [GitHub releases](https://github.com/jajaengland/Receptor/releases) provide direct `.deb` downloads. GitHub Pages enforces HTTPS for this site; HTTP redirects to HTTPS. Some legacy iOS/Cydia clients may not support the required TLS or certificate chain. Plain HTTP hosting is deferred until a custom domain or another suitable host is available.
 
 ## Build and install
 
