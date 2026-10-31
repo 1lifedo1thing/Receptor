@@ -1,3 +1,20 @@
+Package: com.jajaengland.repoicons
+Name: JajaEngland Repository Icons
+Version: 1.0
+Architecture: all
+Maintainer: JajaEngland
+Author: JajaEngland
+Section: Repositories
+Description: Local package icons for JajaEngland's legacy Cydia repository.
+Homepage: https://jajaengland.github.io/repo/
+Depiction: https://jajaengland.github.io/repo/depictions/repo-icons.html
+Icon: file:///Library/JajaEngland/Icons/Repo.png
+Filename: debs/com.jajaengland.repoicons_1.0_all.deb
+Size: 45616
+MD5sum: b61ae354662dc590a23b90db7cff8371
+SHA1: f25911e5e3f11e3b36a04b54f825726fa9d6e82f
+SHA256: 4e5184d33d8be500e76f57813e716efe0b934ede2cdbe7dd9a01caa1d20ed18f
+
 Package: com.receptor.downloadmanager
 Name: Receptor
 Description: Safari downloads and a Quick Look file browser for iOS 4 through 6.
@@ -71,4 +88,23 @@ Size: 745708
 MD5sum: 4c774b877b952f7711799e43cec13412
 SHA1: 0330204c8b24c7b5939c516926daf1e4927295be
 SHA256: e17d09ec18c90234a430729eaa262c11047e0169d4183de1f4954e25a6a706c0
+
+Package: com.receptor.downloadmanager
+Name: Receptor
+Description: Safari downloads, a standalone file browser, and IPA/DEB installation for iOS 4 through 6.
+Maintainer: Receptor
+Author: Receptor
+Section: Tweaks
+Depends: mobilesubstrate, dpkg, com.jajaengland.repoicons (>= 1.0), firmware (>= 4.0), firmware (<< 7.0)
+Homepage: https://github.com/jajaengland/Receptor
+Depiction: https://jajaengland.github.io/repo/depictions/receptor.html
+Icon: file:///Library/JajaEngland/Icons/Receptor.png
+Architecture: iphoneos-arm
+Version: 1.2.1
+Installed-Size: 2244
+Filename: debs/com.receptor.downloadmanager_1.2.1_iphoneos-arm.deb
+Size: 745750
+MD5sum: 6ce53b81e00ffa4cf05da9f17d709c37
+SHA1: c83da63829744cf309edc46afe3a39a4f606ae5b
+SHA256: 50fca1158f1f87b39d8922c2bfdfeb7830f8f292d6a91f1dac5b6375fbdb082d
 

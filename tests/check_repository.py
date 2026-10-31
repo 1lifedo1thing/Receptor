@@ -41,11 +41,15 @@ def main():
                            if member.name.lstrip("./") == "control")
         assert "Package: " + fields["Package"] + "\n" in control
         assert "Version: " + fields["Version"] + "\n" in control
-        assert "Architecture: iphoneos-arm\n" in control
+        assert "Architecture: " + fields["Architecture"] + "\n" in control
         with tarfile.open(fileobj=io.BytesIO(payload_data), mode="r:*") as archive:
             members_info = {member.name.lstrip("./"): member for member in archive.getmembers()}
             payload = {name: archive.extractfile(member).read() for name, member in members_info.items() if member.isfile()}
             names = set(payload)
+        if fields["Package"] == "com.jajaengland.repoicons":
+            assert payload["Library/JajaEngland/Icons/Receptor.png"].startswith(b"\x89PNG\r\n\x1a\n")
+            assert payload["Library/JajaEngland/Icons/Repo.png"].startswith(b"\x89PNG\r\n\x1a\n")
+            continue
         assert "Library/MobileSubstrate/DynamicLibraries/Receptor.dylib" in names
         assert "Library/MobileSubstrate/DynamicLibraries/Receptor.plist" in names
         if fields["Version"] != "1.0.0":
@@ -72,7 +76,7 @@ def main():
                         minimum = struct.unpack_from("<II", binary, offset + 8)
                     offset += size
                 assert minimum == (0x40000, 0x50000)
-            if fields["Version"] == "1.2.0":
+            if "usr/libexec/receptor-deb-helper" in payload:
                 helper_name = "usr/libexec/receptor-deb-helper"
                 helper = members_info[helper_name]
                 assert helper.uid == 0 and helper.gid == 0 and helper.mode == 0o4755

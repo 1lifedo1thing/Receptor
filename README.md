@@ -7,10 +7,12 @@ Safari downloads, a standalone file browser and IPA/DEB installation for **jailb
 Add this source in Cydia → Sources → Edit → Add:
 
 ```text
-https://jajaengland.github.io/
+https://jajaengland.github.io/repo/
 ```
 
-Install or upgrade **Receptor**, then open its **Home screen app**. If the icon does not appear after installation, respring. [Package details](https://jajaengland.github.io/depictions/receptor.html) and [release downloads](https://github.com/jajaengland/Receptor/releases) are available on GitHub. The [JajaEngland repository](https://github.com/jajaengland/jajaengland.github.io) hosts Receptor and future tweaks. The previous `https://jajaengland.github.io/Receptor/` source remains available for existing users; add the general source for future packages.
+Install or upgrade **Receptor**, then open its **Home screen app**. If the icon does not appear after installation, respring. [Package details](https://jajaengland.github.io/repo/depictions/receptor.html) and [release downloads](https://github.com/jajaengland/Receptor/releases) are available on GitHub. The [JajaEngland repository](https://github.com/jajaengland/jajaengland.github.io) hosts Receptor and future tweaks. Previous root and `/Receptor/` sources remain available for existing users; `/repo/` is the canonical source.
+
+1.2.1 adds a dependency on **JajaEngland Repository Icons**. Legacy Cydia's package list loads local `file:///` icons rather than HTTPS images, so the icons package installs Receptor's listing icon under `/Library/JajaEngland/Icons/`. Upgrade Receptor through Cydia to install it automatically, then close and reopen Cydia. Users can also install the icons package first to see custom listing icons before installing individual tweaks. The repository's purple emblem is separate from Receptor's app/package artwork.
 
 GitHub Pages enforces HTTPS. Some legacy Cydia clients may not support its TLS/certificate requirements. The bundled HTTPS transport described below applies to Receptor downloads; it does not replace the networking stack used by Cydia or Safari webpages. Plain HTTP repository hosting is deferred until a suitable domain or alternative host is available.
 

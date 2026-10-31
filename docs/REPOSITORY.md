@@ -1,6 +1,6 @@
 # Cydia repository maintenance
 
-This directory is the legacy Receptor flat APT repository, published by GitHub Pages from `main:/docs`. The main source for Receptor and future tweaks is now **https://jajaengland.github.io/**, maintained in [jajaengland/jajaengland.github.io](https://github.com/jajaengland/jajaengland.github.io). This legacy source remains available so existing installs and binary-embedded depiction links keep working.
+This directory is the legacy Receptor flat APT repository, published by GitHub Pages from `main:/docs`. The main source for Receptor and future tweaks is now **https://jajaengland.github.io/repo/**, maintained in [jajaengland/jajaengland.github.io](https://github.com/jajaengland/jajaengland.github.io). This legacy source remains available so existing installs and binary-embedded depiction links keep working.
 
 - Cydia source: `https://jajaengland.github.io/Receptor/`
 - APT source line: `deb https://jajaengland.github.io/Receptor/ ./`
