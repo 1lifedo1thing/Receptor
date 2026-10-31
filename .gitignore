@@ -1,0 +1,7 @@
+.theos/
+packages/
+obj/
+build/
+.DS_Store
+__pycache__/
+Receptor-source.zip

@@ -1,0 +1,18 @@
+Package: com.receptor.downloadmanager
+Name: Receptor
+Description: Safari downloads and a Quick Look file browser for iOS 4 through 6.
+Maintainer: Receptor
+Author: Receptor
+Section: Tweaks
+Depends: mobilesubstrate, firmware (>= 4.0), firmware (<< 7.0)
+Homepage: https://github.com/jajaengland/Receptor
+Depiction: http://jajaengland.github.io/Receptor/depictions/receptor.html
+Architecture: iphoneos-arm
+Version: 1.0.0
+Installed-Size: 64
+Filename: debs/com.receptor.downloadmanager_1.0.0_iphoneos-arm.deb
+Size: 19832
+MD5sum: 1c36ba29c41176843cb75fd6f0e7a047
+SHA1: 63a4bd04de7ab4b81bd10c528e6453be7c6754f5
+SHA256: 9a1533e44fb3905094caaed4acb4a6085e90b36df45279e12ea233393b66b340
+

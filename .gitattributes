@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.deb -text
+*.gz -text
+*.bz2 -text
+docs/Packages whitespace=-blank-at-eof
