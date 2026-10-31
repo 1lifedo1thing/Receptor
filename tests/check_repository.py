@@ -6,6 +6,8 @@ import hashlib
 import io
 from pathlib import Path
 import tarfile
+import plistlib
+import struct
 
 ROOT = Path(__file__).resolve().parent.parent / "docs"
 
@@ -41,9 +43,34 @@ def main():
         assert "Version: " + fields["Version"] + "\n" in control
         assert "Architecture: iphoneos-arm\n" in control
         with tarfile.open(fileobj=io.BytesIO(payload_data), mode="r:*") as archive:
-            names = {member.name.lstrip("./") for member in archive}
+            payload = {member.name.lstrip("./"): archive.extractfile(member).read() for member in archive if member.isfile()}
+            names = set(payload)
         assert "Library/MobileSubstrate/DynamicLibraries/Receptor.dylib" in names
         assert "Library/MobileSubstrate/DynamicLibraries/Receptor.plist" in names
+        if fields["Version"] != "1.0.0":
+            app = plistlib.loads(payload["Applications/Receptor.app/Info.plist"])
+            assert app["CFBundleIdentifier"] == "com.receptor.app"
+            assert app["MinimumOSVersion"] == "4.0"
+            assert app["CFBundleVersion"] == fields["Version"]
+            ca = payload["Library/Application Support/Receptor/cacert.pem"]
+            assert b"-----BEGIN CERTIFICATE-----" in ca
+            assert ca == (ROOT.parent / "layout/Library/Application Support/Receptor/cacert.pem").read_bytes()
+            assert "Library/Application Support/Receptor/licenses/mbedtls.txt" in names
+            for icon in app["CFBundleIconFiles"]:
+                assert payload["Applications/Receptor.app/" + icon].startswith(b"\x89PNG\r\n\x1a\n")
+            for binary_name in ["Applications/Receptor.app/ReceptorApp", "Library/MobileSubstrate/DynamicLibraries/Receptor.dylib"]:
+                binary = payload[binary_name]
+                magic, cpu, subtype = struct.unpack_from("<III", binary)
+                assert (magic, cpu, subtype) == (0xfeedface, 12, 9)
+                count = struct.unpack_from("<I", binary, 16)[0]
+                offset = 28
+                minimum = None
+                for _ in range(count):
+                    command, size = struct.unpack_from("<II", binary, offset)
+                    if command == 0x25:
+                        minimum = struct.unpack_from("<II", binary, offset + 8)
+                    offset += size
+                assert minimum == (0x40000, 0x50000)
     algorithm = None
     checks = 0
     for line in (ROOT / "Release").read_text().splitlines():

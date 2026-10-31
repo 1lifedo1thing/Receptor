@@ -50,6 +50,12 @@ def main():
                    if line.startswith("Receptor_FILES ="))
     assert all((root / name).is_file() for name in sources)
     assert "iphone:clang:5.0:4.0" in makefile and "-fno-objc-arc" in makefile
+    app = plistlib.loads((root / "App/Info.plist").read_bytes())
+    assert app["CFBundleIdentifier"] == "com.receptor.app"
+    assert app["MinimumOSVersion"] == "4.0"
+    assert app["CFBundleExecutable"] == "ReceptorApp"
+    assert app["CFBundleURLTypes"][0]["CFBundleURLSchemes"] == ["receptor"]
+    assert "ReceptorApp_RESOURCE_FILES = App/Info.plist" in makefile
     ast.parse((root / "tests" / "fixture_server.py").read_text())
     print("PASS: injection plist, source manifest, SDK/MRC settings, Python syntax")
 

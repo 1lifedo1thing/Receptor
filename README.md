@@ -1,10 +1,8 @@
 # Receptor
 
-Source-complete, rootful Theos tweak for **MobileSafari on iOS 4.0–6.1, armv7**, using manual reference counting. It targets **iPhoneOS SDK 5.0** with a deployment target of **4.0**. It is not a standalone SpringBoard app. Tap the **Files** button in Safari to open the browser.
+Safari downloads, a standalone file browser and IPA installation for **jailbroken iOS 4.0–6.1, armv7**. Built with **SDK 5.0**, targeting **iOS 4.0**, using manual reference counting.
 
-**Validation status:** successfully compiled, linked, signed and packaged in Ubuntu WSL using Theos and iPhoneOS5.0.sdk. The Mach-O binary was verified as armv7 with an iOS 4.0 minimum and SDK 5.0, using the legacy `/usr/lib/libsubstrate.dylib` dependency. The package contents and permissions were checked with `dpkg-deb`. The only build warning is that targeting iOS 4.0 is deprecated. No physical iOS device has been tested; Safari's private API and jailbreak sandbox behavior must still be verified on each supported firmware using the checklist below.
-
-## Install with Cydia
+## Install
 
 Add this source in Cydia → Sources → Edit → Add:
 
@@ -12,23 +10,39 @@ Add this source in Cydia → Sources → Edit → Add:
 https://jajaengland.github.io/Receptor/
 ```
 
-Refresh, search for **Receptor**, and install. The [repository page](https://jajaengland.github.io/Receptor/) includes a Cydia shortcut and package details. [GitHub releases](https://github.com/jajaengland/Receptor/releases) provide direct `.deb` downloads. GitHub Pages enforces HTTPS for this site; HTTP redirects to HTTPS. Some legacy iOS/Cydia clients may not support the required TLS or certificate chain. Plain HTTP hosting is deferred until a custom domain or another suitable host is available.
+Install or upgrade **Receptor**, then open its **Home screen app**. If the icon does not appear after installation, respring. [Package details](https://jajaengland.github.io/Receptor/depictions/receptor.html) and [release downloads](https://github.com/jajaengland/Receptor/releases) are available on GitHub.
 
-## Build and install
+GitHub Pages enforces HTTPS. Some legacy Cydia clients may not support its TLS/certificate requirements. The bundled HTTPS transport described below applies to Receptor downloads; it does not replace the networking stack used by Cydia or Safari webpages. Plain HTTP repository hosting is deferred until a suitable domain or alternative host is available.
 
-Use a Theos installation with an armv7-capable compiler, iPhoneOS5.0.sdk, and a toolchain/linker that still accepts an iOS 4.0 deployment target. Current toolchains may have removed this support. Obtain the SDK through your licensed Apple development tools and place it under `$THEOS/sdks/iPhoneOS5.0.sdk`.
+Requires a rootful jailbreak and Cydia Substrate. The jailbreak must permit access to `/var/mobile/Media/Receptor/`. No global sandbox patch or certificate-validation bypass is installed. A compatible AppSync setup may be needed for IPAs that are not validly signed for the device; it is not installed automatically.
+
+## Using Receptor
+
+- **Safari:** tap a downloadable link and choose Download. Completion alerts offer **Open Receptor**. The floating Files window from 1.0.0 has been removed.
+- **Receptor app:** browse completed files, see transfers started in Safari or Receptor, swipe a transfer to cancel, and swipe a saved file to delete. Tap **+** to paste an HTTP(S) file URL and download directly in the app. This is also useful if Safari's own TLS stack cannot reach a page before Receptor receives a policy callback.
+- **Preview:** tap a document for Quick Look or document interaction.
+- **Install IPA:** tap a saved `.ipa`, select **Install IPA**, and confirm. Installation may replace an existing app version. iOS's native installer checks package/device compatibility and signing; Receptor does not decrypt FairPlay-protected apps, forge signatures or force incompatible apps onto the device. Installations run off the UI thread and report progress and the native return code on failure.
+
+Each process allows up to three transfers. iOS grants finite background execution, not a persistent background service. Keep the process that started a long download in the foreground: Safari for Safari downloads, Receptor for downloads started with +. There is no automatic resume after the process exits. Active transfers are exchanged using small, hidden status snapshots; cancellation requests are checked by the owning process. Completed user files survive upgrades and uninstall.
+
+## HTTPS compatibility in 1.1.0
+
+1.0.0 used NSURLConnection and therefore inherited iOS 5's TLS/certificate limitations. 1.1.0 uses statically bundled **curl 8.23.0 + Mbed TLS 3.6.7** with current Mozilla CA roots, independently of Apple's legacy TLS stack. Hostname and certificate-chain verification remain enabled. The minimum requested TLS version is 1.2. Incorrect device date/time, an invalid certificate, a server error or an unsupported server configuration can still prevent a download.
+
+The Obscura locator's direct IPA links can redirect from `archive.org` to an Archive.org storage host. Receptor follows up to ten HTTP(S) redirects, refuses HTTPS-to-HTTP downgrades, and drops credentials and cookies when the origin changes. A server returning HTTP 403/404/500 is reported as an HTTP failure rather than saved as an IPA.
+
+Only HTTP(S) GET requests without bodies are supported. POST forms, blob downloads and one-time responses that cannot be fetched again are not replayed. Initial request headers and available process cookies are preserved. System proxy settings, HTTP/2, HTTP/3 and compressed-content decoding are not supported by this build; requests ask for identity encoding. See [transport sources and licenses](vendor/tls/README.md).
+
+## Build
+
+Use Theos with an armv7-capable compiler/linker and a licensed `iPhoneOS5.0.sdk` under `$THEOS/sdks`. This repository includes the armv7 TLS static libraries and public curl headers; it does not redistribute the Apple SDK.
 
 ```sh
 export THEOS=/path/to/theos
-export THEOS_DEVICE_IP=192.168.1.20
-make clean
 make package FINALPACKAGE=1
-make install
 ```
 
-The device needs a rootful jailbreak with Cydia Substrate. Installation restarts MobileSafari through `INSTALL_TARGET_PROCESSES`. Close Safari before upgrading if a download is active. The filter injects only into `com.apple.mobilesafari`. No entitlement or sandbox bypass is installed: the jailbreak must permit Safari to write `/var/mobile/Media/Receptor/`. Storage errors are reported if it does not. Directory creation occurs as Safari's mobile user; do not create a root-owned, unwritable storage directory.
-
-For this Windows checkout, run the included helper from WSL:
+For the Windows checkout in this project, use WSL:
 
 ```sh
 cd /mnt/d/Receptor
@@ -36,79 +50,52 @@ export THEOS=/home/archi/theos
 bash scripts/build-wsl.sh
 ```
 
-The helper builds in a temporary native Linux directory and copies the package to `packages/com.receptor.downloadmanager_1.0.0_iphoneos-arm.deb`, the signed binary to `build/Receptor.dylib`, and the build log to `build/wsl-build.log`. This avoids Debian's rejection of the mode-0777 permissions reported by this Windows-mounted drive. Run `make install` from a native Linux checkout when installing through Theos, or transfer the `.deb` to the device and install it with its package manager. The helper builds only; it does not install or restart Safari.
+The helper copies inputs to a native Linux temporary directory to avoid DrvFS's mode-0777 packaging errors. It copies the `.deb` to `packages/`, the signed tweak to `build/Receptor.dylib`, the app to `build/Receptor.app/`, and the build log to `build/wsl-build.log`. It does not install to a device. To install through Theos, use a native Linux checkout and `make install` with `THEOS_DEVICE_IP` configured; this restarts Safari and ReceptorApp.
 
-The local `lib/libLegacySubstrate.tbd` file is a link-time interface stub, not a bundled implementation. It declares only the Substrate entry point Receptor uses and the legacy runtime install name. This prevents modern Theos vendor stubs from introducing a dependency on the newer CydiaSubstrate.framework path. The SDK-specific `MobileCoreServices/UTType.h` import likewise avoids modern private umbrella headers shadowing the iOS 5.0 public API.
+To rebuild third-party libraries, run `bash scripts/build-tls.sh`. Source archive hashes are pinned and checked before compilation. Mbed TLS's millisecond clock uses a small `mach_absolute_time` adapter because legacy iOS lacks `clock_gettime`. To regenerate the geometric app icons, install Pillow and run `python3 scripts/make-icons.py`.
 
-## Files
+The local `lib/libLegacySubstrate.tbd` is a link-time interface pointing to `/usr/lib/libsubstrate.dylib`, avoiding the newer framework install name in current Theos. The app carries the platform-application entitlement for the legacy installation API. Its manifest registers `receptor://files`. Package scripts invoke `uicache` when available.
 
-| File | Responsibility |
+## Architecture
+
+| Files | Responsibility |
 | --- | --- |
-| `Makefile`, `control`, `Receptor.plist` | SDK, architecture, dependency metadata and injection filter |
-| `Tweak.x` | Guarded legacy WebView policy-delegate hook and startup |
-| `ReceptorPolicyProxy.h/.m` | Delegate forwarding, link/MIME/attachment interception |
-| `DownloadManager.h/.m` | Async network transfers, disk writes, cancellation and background execution |
-| `ReceptorPaths.h/.m` | Storage checks, filename sanitization and request eligibility |
-| `ReceptorUI.h/.m` | Consent queue, completion notifications, Safari Files button and browser window |
-| `FileBrowserViewController.h/.m` | Active/saved lists, deletion, Quick Look and document interaction |
-| `tests/fixture_server.py` | HTTP fixtures for device integration testing |
-| `tests/check_project.py` | Packaging-input and in-memory fixture checks |
-| `scripts/build-wsl.sh`, `lib/libLegacySubstrate.tbd` | WSL packaging helper and legacy Substrate link interface |
+| `Tweak.x`, `ReceptorPolicyProxy.*` | Guarded legacy WebKit policy-delegate interception in MobileSafari |
+| `RCCurlTransfer.*` | Worker-thread HTTP(S), portable TLS, response/filename parsing, redirect rules |
+| `DownloadManager.*` | Streamed disk writes, active transfers, background tasks, cancellation and status snapshots |
+| `App/`, `FileBrowserViewController.*` | Home screen app, URL downloads, files, previews and install UI |
+| `RCIPAInstaller.*` | Guarded dynamic lookup of `MobileInstallationInstall` on supported legacy firmware |
+| `ReceptorUI.*`, `ReceptorPaths.*` | Consent/notifications, app launching, storage and filename handling |
+| `vendor/tls/`, `layout/` | Armv7 TLS libraries, CA roots, licenses and package scripts |
+| `docs/`, `scripts/update-repository.py` | Flat Cydia repository and deterministic compressed indexes |
 
-All Objective-C objects use `retain`, `release`, `autorelease` and `super dealloc`. DownloadManager, ReceptorUI and the immutable file-extension set intentionally live for the process lifetime. There is no ARC or dependency on NSURLSession, WKWebView, modern alert controllers, Auto Layout or iOS 5-only presentation APIs.
+The tweak wraps `WebView -setPolicyDelegate:` and forwards optional callbacks to Safari's original assign-owned delegate. Signatures are checked before wrapping. Policy listeners are resolved on WebKit's calling thread; consent and download management run on the main thread. curl runs on worker threads and hands each response/data chunk to the main thread synchronously, bounding queued data and preserving file/UI ownership. MRC ownership is explicit throughout.
 
-## Interception and UI
+Files stream into exclusive, mode-0600 hidden partials. Sanitized names cannot create subdirectories or hidden user files. Completed transfers are flushed and atomically published without overwriting existing files; duplicate names receive a numbered suffix. The browser ignores hidden files and symlinks. Handled failures/cancellation remove owned partials; a crash or kill can leave an ignored hidden `.part` file. No archives are unpacked automatically.
 
-The tweak hooks `WebView -setPolicyDelegate:` rather than guessing Safari's version-dependent `BrowserController`/`TabDocument` method layouts. A retained associated proxy forwards optional callbacks to the original, assign-owned delegate. The private setter's signature and implemented policy method signatures are checked before wrapping. The original delegate's assign lifetime contract is preserved: WebView must be detached before its delegate is destroyed, as with unmodified Safari. Unsupported ABIs leave Safari's original delegate in place and log a message. Legacy WebKit is loaded if UIKit has not loaded it yet.
+## Validation
 
-Explicit clicked links with known file extensions are offered for download, including text/source files Safari would ordinarily render. Top-level MIME policy callbacks catch formats `WebView +canShowMIMEType:` cannot display, and attachments when the provisional response exposes `Content-Disposition`. New-window file links are also handled. Ordinary page/subframe loads pass through; extensionless renderable content without an attachment header retains Safari's behavior. The extension allowlist is in `ReceptorPolicyProxy.m`.
+1.1.0 compiles, links, signs and packages for armv7 with SDK 5.0 and an iOS 4.0 minimum. Package checks validate the app manifest, executable headers, icon resources, CA bundle, tweak and repository checksums. Native Linux tests of the same curl/Mbed TLS versions pass TLS 1.2 downloads and redirects and reject untrusted issuers and wrong hostnames. The transport also successfully retrieved response bodies from Archive.org and GitHub Pages. An Obscura-linked VLC IPA endpoint reached its storage host but returned HTTP 500 during testing; successful TLS does not guarantee an archive file is available.
 
-Only HTTP(S) GET requests without bodies are eligible. POST submissions, non-HTTP schemes, JavaScript/blob-generated downloads and HTML `download` attributes are not replayed or emulated. Receptor resolves the policy listener immediately with `ignore` on WebKit's calling thread, copies the request, and queues consent on the main thread. **Cancel stops the navigation.** Choosing Download starts a separate GET; it does not reuse the original response body. Single-use URLs or sites requiring a POST will need site-specific support.
-
-The main thread owns UIKit and the manager. Requests preserve original headers and use the process's shared cookie storage; verify authenticated sites on-device because Safari's private cookie behavior can vary. Cross-origin redirects remove Cookie, Authorization, Proxy-Authorization and Referer headers; the URL loading system can supply cookies appropriate to the new destination. HTTPS-to-HTTP redirects are rejected. Default Foundation certificate validation is preserved; no trust bypass is implemented. Legacy iOS TLS/certificate support limits which current servers can be reached.
-
-The Files button floats near Safari's lower right corner. The browser uses its own normal-level window just above Safari, avoiding reliance on Safari's private root controller. Done restores Safari's previous key window. Lists use standard iOS 4 table/navigation controls; iPad document interaction is anchored to the selected row.
-
-## Downloads and storage
-
-Up to three asynchronous NSURLConnection transfers run concurrently. Received chunks are written directly to an exclusive, mode-0600 hidden `.part` file. Disk usage grows with file size; memory does not hold an entire download. Writes, close and flush failures become visible errors. HTTP errors and unsolicited partial responses (206) fail instead of publishing an error page or partial file.
-
-Response-suggested names are sanitized; names cannot introduce subdirectories or hidden files. Missing extensions can be inferred using MobileCoreServices. Completion uses an atomic, no-overwrite hard link within the same directory, then removes the hidden partial file. Existing names receive ` (1)`, ` (2)`, etc. Saved files remain mode 0600 and readable by mobile. The browser lists regular files only and ignores symlinks and hidden partials. It does not execute or automatically unpack downloads.
-
-Cancellation and handled failures remove the task's partial file. A kill, crash or reboot can leave hidden `.part` files; they are ignored, not resumed. With Safari fully closed, an administrator can inspect and remove these files if space needs reclaiming. Completed user files are preserved on uninstall and upgrade. The fixed shared Media directory is user-accessible storage, not Safari's application sandbox.
-
-`beginBackgroundTaskWithExpirationHandler:` provides **finite** background execution on iOS 4–6. It cannot provide a daemon or iOS 7 background NSURLSession service. When background time expires the transfer is cancelled with an explanation. There is no persistent queue, automatic retry or resume. Foreground completion/failure uses a queued alert; background completion/failure uses UILocalNotification attributed to Safari. Device notification settings determine delivery. Keep Safari open for long downloads.
-
-## Device integration checklist
-
-Run `python3 tests/check_project.py` for packaging-input checks and in-memory fixture-response checks. These require no network access or iOS toolchain and passed in the authoring environment. Live socket checks were blocked by the environment's local network restrictions.
-
-Run the fixtures on a computer reachable from a test device:
+**Physical-device validation is still required**, particularly on the reported iPad 1 / iOS 5.1.1. Compilation and native transport tests cannot certify private Safari hooks, Home screen registration or installation/signing behavior on the device.
 
 ```sh
-python3 tests/fixture_server.py --bind 0.0.0.0 --port 8080
+python3 tests/check_project.py
+python3 scripts/update-repository.py
+python3 tests/check_repository.py
+bash scripts/build-host-tls-probe.sh
+python3 tests/test_tls_transport.py
 ```
 
-Open `http://COMPUTER_LAN_IP:8080/` in Safari. Permit that port through the computer's firewall for the test network. The default server bind is localhost if `--bind` is omitted.
+For device HTTP fixtures, run `python3 tests/fixture_server.py --bind 0.0.0.0 --port 8080` on a reachable computer and open its LAN URL in Safari. Check link/MIME interception, cancellation, duplicate/unsafe names, empty/error/truncated responses, cookies, background expiration and stored byte integrity. The slow `.zip` endpoint contains synthetic bytes for transfer tests, not a real archive.
 
-Validate on physical armv7 devices for iOS **4.0, 4.3, 5.0, 5.1.1, 6.0 and 6.1**, including iPhone and iPad where available:
+On-device, also verify: the Receptor icon after upgrade; direct URL downloads with +; Safari-to-app transfer status and cancellation; file preview/deletion; IPA Install confirmation, progress and error reporting with a compatible test app; rotation/iPad menus; failed certificates and incorrect date/time; no saved HTML error pages; process kill/relaunch; and MRC behavior with Instruments. Keep a backup before testing an IPA upgrade that replaces an installed app.
 
-1. Install and launch Safari. Check the system log for `[Receptor]` diagnostics. Confirm the Files button and Safari's normal browsing, back/forward, forms, tabs and new windows work.
-2. Click ZIP, text, extensionless attachment, unknown MIME, redirect and new-window links. Each should offer one consent dialog. Cancel creates no download. Download saves the expected bytes. Files opens the browser without starting the pending request.
-3. Download the same ZIP twice; verify `archive.zip` and `archive (1).zip` and compare bytes with the fixture ZIP. Test attachment filenames and the unsafe-name endpoint; no file may escape the Receptor directory. Place a same-named symlink in the directory and verify publication chooses a fresh name instead of replacing/following it.
-4. Set the cookie and download the protected ZIP. Confirm success; if not, inspect that firmware's Safari cookie integration. Test a real authenticated site and same-/cross-origin redirects. Verify HTTPS certificate failures and HTTPS-to-HTTP downgrade rejection using controlled test servers.
-5. Download a supported PDF/image/document from a controlled server, preview, return, rotate, use Done, reopen, and delete. Test an unsupported file with and without an installed document handler. Check iPad popover anchoring. Empty/error storage states must remain usable.
-6. Start the slow fixture. Check progress, cancellation, multiple concurrent transfers and the three-transfer limit. Background Safari briefly, return, and then test expiration by leaving it backgrounded. Expiration must remove the partial and report failure. Notification settings affect alerts.
-7. HTTP 503 and truncated-body endpoints must fail without a saved file. Test disconnects, disk-full storage and unwritable storage on a disposable test filesystem/device; existing files must survive. Restore permissions/space after the test.
-8. Kill Safari during a slow transfer and reopen. Previously saved files must remain visible; a leftover hidden partial must not appear as completed. No automatic resume is expected.
-9. Run Instruments Leaks/Allocations through repeated prompt, cancel, preview, delete, Files open/close and background-expiration cycles. Confirm tasks, connections, windows and preview controllers are released after use.
-
-The fixture server supports these checks but does not test or certify the Objective-C implementation by itself. It deliberately serves the slow endpoint as synthetic bytes with a `.zip` URL; it is for transfer testing, not ZIP preview.
-
-## Reference contracts
+## References
 
 - [Apple: legacy WebKit policy decisions](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/DisplayWebContent/Tasks/PolicyDecisions.html)
-- [Apple: incremental NSURLConnection data callbacks](https://developer.apple.com/documentation/foundation/nsurlconnectiondatadelegate/connection%28_%3Adidreceive%3A%29-8p5vg?language=objc)
-- [Theos: project configuration](https://theos.dev/docs/configuration)
+- [Apple: HTTPS server trust evaluation and error codes](https://developer.apple.com/library/archive/technotes/tn2232/)
+- [Theos configuration](https://theos.dev/docs/configuration)
+- [Mbed TLS supported branches](https://github.com/Mbed-TLS/mbedtls/blob/development/BRANCHES.md)
 
-The WebKit policy contract documents the callback structure; it does not establish private MobileSafari compatibility across all iOS firmware. That compatibility remains subject to the runtime guards and device validation above.
+The installed file browser and private installer are independent of the website used to find an IPA. Receptor does not guarantee that a third-party archive is available or that an archived app will run on a particular device.

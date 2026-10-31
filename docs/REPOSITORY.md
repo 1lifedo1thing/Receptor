@@ -12,7 +12,7 @@ Build the new package, then regenerate all indexes and hashes:
 
 ```sh
 bash scripts/build-wsl.sh
-python3 scripts/update-repository.py packages/com.receptor.downloadmanager_1.0.0_iphoneos-arm.deb
+python3 scripts/update-repository.py
 python3 tests/check_repository.py
 ```
 

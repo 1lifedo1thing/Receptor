@@ -1,18 +1,22 @@
 #import "DownloadManager.h"
 #import "ReceptorPaths.h"
 #import "ReceptorUI.h"
+#import "RCCurlTransfer.h"
 #import <MobileCoreServices/UTType.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <signal.h>
 
 @class RCDownloadTask;
 @interface DownloadManager (Internal)
 - (void)task:(RCDownloadTask *)task finishedWithError:(NSError *)error;
+- (NSArray *)localDownloads;
+- (void)publishDownloads;
 @end
 
-@interface RCDownloadTask : NSObject {
+@interface RCDownloadTask : NSObject <RCCurlTransferDelegate> {
 @public
     NSString *_identifier;
     NSString *_name;
@@ -20,7 +24,7 @@
     long long _expected;
 @private
     DownloadManager *_manager; // process-lifetime singleton, does not retain tasks via this pointer
-    NSURLConnection *_connection;
+    RCCurlTransfer *_transfer;
     NSString *_temporaryPath;
     int _fd;
     UIBackgroundTaskIdentifier _backgroundTask;
@@ -34,13 +38,6 @@
 - (BOOL)start:(NSURLRequest *)request error:(NSError **)error;
 - (void)finish:(NSError *)error;
 @end
-
-static BOOL RCSameOrigin(NSURL *a, NSURL *b) {
-    NSNumber *ap = [a port] ?: [NSNumber numberWithInt:[[[a scheme] lowercaseString] isEqual:@"https"] ? 443 : 80];
-    NSNumber *bp = [b port] ?: [NSNumber numberWithInt:[[[b scheme] lowercaseString] isEqual:@"https"] ? 443 : 80];
-    return [[[a scheme] lowercaseString] isEqual:[[b scheme] lowercaseString]]
-        && [[[a host] lowercaseString] isEqual:[[b host] lowercaseString]] && [ap isEqual:bp];
-}
 
 @implementation RCDownloadTask
 - (id)initWithManager:(DownloadManager *)manager {
@@ -73,8 +70,8 @@ static BOOL RCSameOrigin(NSURL *a, NSURL *b) {
     [copy setValue:nil forHTTPHeaderField:@"If-Range"];
     [copy setValue:nil forHTTPHeaderField:@"If-None-Match"];
     [copy setValue:nil forHTTPHeaderField:@"If-Modified-Since"];
-    _connection = [[NSURLConnection alloc] initWithRequest:copy delegate:self startImmediately:NO];
-    if (!_connection) {
+    _transfer = [[RCCurlTransfer alloc] initWithRequest:copy delegate:self];
+    if (!_transfer) {
         if (error) *error = RCError(@"Unable to start the network connection.");
         return NO;
     }
@@ -82,37 +79,13 @@ static BOOL RCSameOrigin(NSURL *a, NSURL *b) {
     _backgroundTask = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
         [self finish:RCError(@"Background time expired. Keep Safari open and retry the download.")];
     }];
-    [_connection scheduleInRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
-    [_connection start];
+    [_transfer start];
     return YES;
 }
-- (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request
-            redirectResponse:(NSURLResponse *)response {
-    (void)connection;
-    if (!RCIsDownloadRequest(request)) {
-        [self finish:RCError(@"The server redirected to an unsupported request.")];
-        return nil;
-    }
-    if (!response) return request;
-    NSURL *oldURL = [response URL];
-    if ([[[oldURL scheme] lowercaseString] isEqual:@"https"] &&
-        ![[[[request URL] scheme] lowercaseString] isEqual:@"https"]) {
-        [self finish:RCError(@"An insecure HTTPS to HTTP redirect was blocked.")];
-        return nil;
-    }
-    NSMutableURLRequest *redirect = [[request mutableCopy] autorelease];
-    if (!RCSameOrigin(oldURL, [request URL])) {
-        [redirect setValue:nil forHTTPHeaderField:@"Authorization"];
-        [redirect setValue:nil forHTTPHeaderField:@"Proxy-Authorization"];
-        [redirect setValue:nil forHTTPHeaderField:@"Cookie"];
-        [redirect setValue:nil forHTTPHeaderField:@"Referer"];
-    }
-    return redirect;
-}
-- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response {
+- (void)curlTransfer:(RCCurlTransfer *)connection didReceiveResponse:(NSURLResponse *)response {
     (void)connection;
     if (_finished) return;
-    if (![response isKindOfClass:[NSHTTPURLResponse class]]) {
+    if (![response respondsToSelector:@selector(statusCode)] || ![response respondsToSelector:@selector(allHeaderFields)]) {
         [self finish:RCError(@"The server did not return an HTTP response.")]; return;
     }
     NSInteger status = [(NSHTTPURLResponse *)response statusCode];
@@ -147,7 +120,7 @@ static BOOL RCSameOrigin(NSURL *a, NSURL *b) {
     }
     [_name release]; _name = [name copy];
 }
-- (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data {
+- (void)curlTransfer:(RCCurlTransfer *)connection didReceiveData:(NSData *)data {
     (void)connection;
     if (_finished) return;
     if (!_hasResponse) { [self finish:RCError(@"Received data without a valid response.")]; return; }
@@ -167,14 +140,10 @@ static BOOL RCSameOrigin(NSURL *a, NSURL *b) {
         [[NSNotificationCenter defaultCenter] postNotificationName:RCDownloadsChangedNotification object:_manager];
     }
 }
-- (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
+- (void)curlTransfer:(RCCurlTransfer *)connection didFailWithError:(NSError *)error {
     (void)connection; [self finish:error];
 }
-- (NSCachedURLResponse *)connection:(NSURLConnection *)connection willCacheResponse:(NSCachedURLResponse *)response {
-    (void)connection; (void)response;
-    return nil; // Download bytes belong on disk, not in Safari's shared URL cache.
-}
-- (void)connectionDidFinishLoading:(NSURLConnection *)connection {
+- (void)curlTransferDidFinish:(RCCurlTransfer *)connection {
     (void)connection;
     if (_finished) return;
     if (!_hasResponse) { [self finish:RCError(@"The server returned no response.")]; return; }
@@ -207,7 +176,7 @@ static BOOL RCSameOrigin(NSURL *a, NSURL *b) {
     if (_finished) return;
     [self retain]; // Removing the manager's ownership and connection delegate can release us.
     _finished = YES;
-    [_connection cancel]; [_connection release]; _connection = nil;
+    [_transfer cancel]; [_transfer release]; _transfer = nil;
     if (_fd >= 0) { close(_fd); _fd = -1; }
     if (_ownsTemporaryFile) { unlink([_temporaryPath fileSystemRepresentation]); _ownsTemporaryFile = NO; }
     if (_backgroundTask != UIBackgroundTaskInvalid) {
@@ -219,7 +188,7 @@ static BOOL RCSameOrigin(NSURL *a, NSURL *b) {
     [self autorelease];
 }
 - (void)dealloc {
-    [_connection cancel]; [_connection release];
+    [_transfer cancel]; [_transfer release];
     if (_fd >= 0) close(_fd);
     if (_ownsTemporaryFile) unlink([_temporaryPath fileSystemRepresentation]);
     [_temporaryPath release]; [_identifier release]; [_name release];
@@ -235,7 +204,11 @@ static BOOL RCSameOrigin(NSURL *a, NSURL *b) {
     return manager;
 }
 - (id)init {
-    if ((self = [super init])) _tasks = [[NSMutableArray alloc] init];
+    if ((self = [super init])) {
+        _tasks = [[NSMutableArray alloc] init];
+        _statusTimer = [[NSTimer timerWithTimeInterval:1.0 target:self selector:@selector(poll:) userInfo:nil repeats:YES] retain];
+        [[NSRunLoop mainRunLoop] addTimer:_statusTimer forMode:NSRunLoopCommonModes];
+    }
     return self;
 }
 - (BOOL)startDownloadWithRequest:(NSURLRequest *)request error:(NSError **)error {
@@ -252,28 +225,80 @@ static BOOL RCSameOrigin(NSURL *a, NSURL *b) {
     BOOL started = [task start:request error:error];
     if (!started) [_tasks removeObjectIdenticalTo:task];
     [task release];
+    [self publishDownloads];
     [[NSNotificationCenter defaultCenter] postNotificationName:RCDownloadsChangedNotification object:self];
     return started;
 }
-- (NSArray *)activeDownloads {
+- (NSArray *)localDownloads {
     NSMutableArray *result = [NSMutableArray array];
     for (RCDownloadTask *task in _tasks) {
         [result addObject:[NSDictionary dictionaryWithObjectsAndKeys:task->_identifier, @"identifier",
             task->_name, @"name", [NSNumber numberWithLongLong:task->_received], @"received",
-            [NSNumber numberWithLongLong:task->_expected], @"expected", nil]];
+            [NSNumber numberWithLongLong:task->_expected], @"expected",
+            [NSNumber numberWithInt:getpid()], @"ownerPID",
+            [[[NSBundle mainBundle] bundleIdentifier] isEqual:@"com.receptor.app"] ? @"Receptor" : @"Safari", @"source", nil]];
     }
     return result;
 }
+- (void)publishDownloads {
+    if (!RCEnsureDownloadsDirectory(NULL)) return;
+    BOOL app = [[[NSBundle mainBundle] bundleIdentifier] isEqual:@"com.receptor.app"];
+    NSString *name = app ? @".status-App.plist" : @".status-Safari.plist";
+    NSDictionary *snapshot = [NSDictionary dictionaryWithObjectsAndKeys:[self localDownloads], @"tasks",
+        [NSDate date], @"updated", [NSNumber numberWithInt:getpid()], @"pid", nil];
+    [snapshot writeToFile:[RCDownloadsDirectory stringByAppendingPathComponent:name] atomically:YES];
+}
+- (NSArray *)activeDownloads {
+    NSMutableArray *result = [NSMutableArray arrayWithArray:[self localDownloads]];
+    BOOL app = [[[NSBundle mainBundle] bundleIdentifier] isEqual:@"com.receptor.app"];
+    NSString *name = app ? @".status-Safari.plist" : @".status-App.plist";
+    NSDictionary *snapshot = [NSDictionary dictionaryWithContentsOfFile:[RCDownloadsDirectory stringByAppendingPathComponent:name]];
+    NSDate *updated = [snapshot objectForKey:@"updated"];
+    int pid = [[snapshot objectForKey:@"pid"] intValue];
+    NSArray *tasks = [snapshot objectForKey:@"tasks"];
+    if ([updated isKindOfClass:[NSDate class]] && [updated timeIntervalSinceNow] > -30 && pid > 0 &&
+        (kill(pid, 0) == 0 || errno == EPERM) && [tasks isKindOfClass:[NSArray class]]) {
+        for (id value in tasks) {
+            if (![value isKindOfClass:[NSDictionary class]]) continue;
+            NSString *identifier = [value objectForKey:@"identifier"];
+            if (![identifier isKindOfClass:[NSString class]] || ![identifier length] ||
+                ![[value objectForKey:@"name"] isKindOfClass:[NSString class]]) continue;
+            [result addObject:value];
+        }
+    }
+    return result;
+}
+- (void)poll:(NSTimer *)timer {
+    (void)timer;
+    for (RCDownloadTask *task in [[_tasks copy] autorelease]) {
+        NSString *path = [RCDownloadsDirectory stringByAppendingPathComponent:[NSString stringWithFormat:@".cancel-%@.plist", RCSafeFilename(task->_identifier)]];
+        NSDictionary *request = [NSDictionary dictionaryWithContentsOfFile:path];
+        if ([[request objectForKey:@"identifier"] isEqual:task->_identifier] && [[request objectForKey:@"ownerPID"] intValue] == getpid()) {
+            unlink([path fileSystemRepresentation]);
+            [task finish:RCError(@"Download cancelled.")];
+        }
+    }
+    [self publishDownloads];
+    [[NSNotificationCenter defaultCenter] postNotificationName:RCDownloadsChangedNotification object:self];
+}
 - (void)cancelDownloadWithIdentifier:(NSString *)identifier {
     for (RCDownloadTask *task in [[_tasks copy] autorelease]) {
-        if ([task->_identifier isEqual:identifier]) { [task finish:RCError(@"Download cancelled.")]; break; }
+        if ([task->_identifier isEqual:identifier]) { [task finish:RCError(@"Download cancelled.")]; return; }
+    }
+    for (NSDictionary *task in [self activeDownloads]) {
+        if ([[task objectForKey:@"identifier"] isEqual:identifier]) {
+            NSString *path = [RCDownloadsDirectory stringByAppendingPathComponent:[NSString stringWithFormat:@".cancel-%@.plist", RCSafeFilename(identifier)]];
+            [task writeToFile:path atomically:YES];
+            return;
+        }
     }
 }
 - (void)task:(RCDownloadTask *)task finishedWithError:(NSError *)error {
     NSString *message = error ? [error localizedDescription] : [NSString stringWithFormat:@"Saved %@", task->_name];
     [_tasks removeObjectIdenticalTo:task];
+    [self publishDownloads];
     [[NSNotificationCenter defaultCenter] postNotificationName:RCDownloadsChangedNotification object:self];
     [[ReceptorUI sharedUI] showMessage:message];
 }
-- (void)dealloc { [_tasks release]; [super dealloc]; }
+- (void)dealloc { [_statusTimer invalidate]; [_statusTimer release]; [_tasks release]; [super dealloc]; }
 @end

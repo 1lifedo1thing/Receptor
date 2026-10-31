@@ -2,4 +2,6 @@
 *.deb -text
 *.gz -text
 *.bz2 -text
+*.a -text
+*.png -text
 docs/Packages whitespace=-blank-at-eof

@@ -2,6 +2,7 @@
 
 @interface DownloadManager : NSObject {
     NSMutableArray *_tasks;
+    NSTimer *_statusTimer;
 }
 + (DownloadManager *)sharedManager;
 // All public methods and delegate callbacks run on the main thread.

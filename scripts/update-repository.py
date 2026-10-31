@@ -41,9 +41,10 @@ def digest(data, algorithm):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("package", nargs="?", type=Path, default=ROOT / "packages/com.receptor.downloadmanager_1.0.0_iphoneos-arm.deb")
+    parser.add_argument("package", nargs="?", type=Path)
     args = parser.parse_args()
-    package = args.package.resolve(strict=True)
+    version = next(line.split(":", 1)[1].strip() for line in (ROOT / "control").read_text().splitlines() if line.startswith("Version:"))
+    package = (args.package or ROOT / ("packages/com.receptor.downloadmanager_%s_iphoneos-arm.deb" % version)).resolve(strict=True)
     # Validate metadata before copying a package into the published tree.
     control_text(package)
     output = ROOT / "docs"
