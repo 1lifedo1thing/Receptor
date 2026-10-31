@@ -7,10 +7,10 @@ Safari downloads, a standalone file browser and IPA/DEB installation for **jailb
 Add this source in Cydia → Sources → Edit → Add:
 
 ```text
-https://jajaengland.github.io/Receptor/
+https://jajaengland.github.io/
 ```
 
-Install or upgrade **Receptor**, then open its **Home screen app**. If the icon does not appear after installation, respring. [Package details](https://jajaengland.github.io/Receptor/depictions/receptor.html) and [release downloads](https://github.com/jajaengland/Receptor/releases) are available on GitHub.
+Install or upgrade **Receptor**, then open its **Home screen app**. If the icon does not appear after installation, respring. [Package details](https://jajaengland.github.io/depictions/receptor.html) and [release downloads](https://github.com/jajaengland/Receptor/releases) are available on GitHub. The [JajaEngland repository](https://github.com/jajaengland/jajaengland.github.io) hosts Receptor and future tweaks. The previous `https://jajaengland.github.io/Receptor/` source remains available for existing users; add the general source for future packages.
 
 GitHub Pages enforces HTTPS. Some legacy Cydia clients may not support its TLS/certificate requirements. The bundled HTTPS transport described below applies to Receptor downloads; it does not replace the networking stack used by Cydia or Safari webpages. Plain HTTP repository hosting is deferred until a suitable domain or alternative host is available.
 
@@ -88,6 +88,8 @@ The root helper is limited to package installation and is not a general privileg
 1.2.0 compiles, links, signs and packages for armv7 with SDK 5.0 and an iOS 4.0 minimum. Package checks validate the app manifest, executable headers, icon resources, CA bundle, tweak, root helper and repository checksums. Native Linux tests of the same curl/Mbed TLS versions pass TLS 1.2 downloads and redirects and reject untrusted issuers and wrong hostnames. The transport also successfully retrieved response bodies from Archive.org and GitHub Pages. An Obscura-linked VLC IPA endpoint reached its storage host but returned HTTP 500 during testing; successful TLS does not guarantee an archive file is available.
 
 **Physical-device validation is still required**, particularly on the reported iPad 1 / iOS 5.1.1. Compilation and native transport tests cannot certify private Safari hooks, Home screen registration or installation/signing behavior on the device.
+
+Latest user-reported iPad 1 / iOS 5.1.1 results: three IPA downloads completed and one installed app launched. Two other app launch failures remain unexplained; compatibility, signing and other app-specific causes have not been established. DEB installation appearing in Cydia has not yet been confirmed on-device. Treat the current release as experimental and the full iOS 4–6 range as intended targets rather than a validated support matrix.
 
 ```sh
 python3 tests/check_project.py
