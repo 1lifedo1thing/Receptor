@@ -6,7 +6,7 @@ project_dir="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 build_dir="$(mktemp -d /tmp/receptor-build.XXXXXX)"
 trap 'case "$build_dir" in /tmp/receptor-build.*) rm -rf -- "$build_dir" ;; esac' EXIT
 mkdir -p "$project_dir/build" "$project_dir/packages"
-cp "$project_dir/"*.h "$project_dir/"*.m "$project_dir/"*.x \
+cp "$project_dir/"*.h "$project_dir/"*.m "$project_dir/"*.x "$project_dir/"*.c \
    "$project_dir/Makefile" "$project_dir/control" "$project_dir/Receptor.plist" "$build_dir/"
 cp -R "$project_dir/lib" "$build_dir/lib"
 cp -R "$project_dir/App" "$project_dir/vendor" "$project_dir/Tools" "$build_dir/"

@@ -55,6 +55,8 @@ namespace ReceptorDesktop {
     public sealed class CompanionServer : IDisposable {
         private readonly TcpListener listener;
         private readonly string key;
+        private readonly ConnectionSettings identity;
+        private readonly string session;
         private readonly object gate = new object();
         private readonly List<SharedPackage> packages = new List<SharedPackage>();
         private readonly HashSet<TcpClient> clients = new HashSet<TcpClient>();
@@ -63,12 +65,13 @@ namespace ReceptorDesktop {
         private volatile bool stopped;
         private int pendingAdds;
         public event Action<string> Status;
-        public string Code { get { return key; } }
+        public string Code { get { return identity.Code; } }
         public int Port { get { return ((IPEndPoint)listener.LocalEndpoint).Port; } }
-        public CompanionServer(IPAddress address, int port) {
-            byte[] random = new byte[10];
+        public CompanionServer(IPAddress address, int port, ConnectionSettings settings) {
+            identity = settings; key = settings.Key;
+            byte[] random = new byte[16];
             using (RandomNumberGenerator rng = RandomNumberGenerator.Create()) rng.GetBytes(random);
-            key = Hex(random).ToUpperInvariant();
+            session = Hex(random);
             Directory.CreateDirectory(staging);
             listener = new TcpListener(address, port);
             try { listener.Start(8); } catch { Directory.Delete(staging); throw; }
@@ -116,7 +119,7 @@ namespace ReceptorDesktop {
             using (MemoryStream buffer = new MemoryStream()) {
                 using (XmlWriter xml = XmlWriter.Create(buffer, new XmlWriterSettings { Encoding = new UTF8Encoding(false), CloseOutput = false })) {
                     xml.WriteStartDocument(); xml.WriteStartElement("plist"); xml.WriteAttributeString("version", "1.0");
-                    xml.WriteStartElement("dict"); xml.WriteElementString("key", "protocol"); xml.WriteElementString("integer", "1");
+                    xml.WriteStartElement("dict"); xml.WriteElementString("key", "protocol"); xml.WriteElementString("integer", "2");
                     xml.WriteElementString("key", "files"); xml.WriteStartElement("array");
                     lock (gate) foreach (SharedPackage item in packages) {
                         xml.WriteStartElement("dict");
@@ -161,29 +164,37 @@ namespace ReceptorDesktop {
                         if (headers.ContainsKey(name)) throw new IOException("Duplicate header.");
                         headers.Add(name, line.Substring(colon + 1).Trim());
                     }
-                    Match match = Regex.Match(request, @"^GET (/v1/manifest|/v1/files/[a-f0-9]{32})\?nonce=([a-f0-9]{32}) HTTP/1\.[01]$");
+                    Match match = Regex.Match(request, @"^GET (/v2/pairing|/v2/manifest|/v2/files/[a-f0-9]{32})\?nonce=([a-f0-9]{32}) HTTP/1\.[01]$");
                     string auth;
                     if (!match.Success || headers.ContainsKey("Transfer-Encoding") ||
-                        (headers.ContainsKey("Content-Length") && headers["Content-Length"] != "0") ||
-                        !headers.TryGetValue("X-Receptor-Auth", out auth) ||
-                        !Equal(Mac(key, "GET\n" + match.Groups[1].Value + "\n" + match.Groups[2].Value), auth)) {
+                        (headers.ContainsKey("Content-Length") && headers["Content-Length"] != "0")) {
                         Header(stream, 403, 0, null, "text/plain"); return;
                     }
                     string route = match.Groups[1].Value, nonce = match.Groups[2].Value;
+                    if (route == "/v2/pairing") {
+                        // Public salt and fresh server session; the subsequent manifest must authenticate.
+                        byte[] info = Encoding.ASCII.GetBytes("2\n" + identity.Salt + "\n" + session);
+                        Header(stream, 200, info.Length, null, "text/plain"); stream.Write(info, 0, info.Length); return;
+                    }
+                    if (
+                        !headers.TryGetValue("X-Receptor-Auth", out auth) ||
+                        !Equal(Mac(key, "GET\n" + route + "\n" + nonce + "\n" + session), auth)) {
+                        Header(stream, 403, 0, null, "text/plain"); return;
+                    }
                     lock (gate) {
                         // Bound memory without re-enabling old captured requests in a session.
                         if (nonces.Count >= 4096 || !nonces.Add(nonce)) { Header(stream, 409, 0, null, "text/plain"); return; }
                     }
-                    if (route == "/v1/manifest") {
+                    if (route == "/v2/manifest") {
                         byte[] body = Manifest();
-                        Header(stream, 200, body.Length, Mac(key, "response\n" + nonce + "\n" + Hash(body)), "application/x-plist");
+                        Header(stream, 200, body.Length, Mac(key, "response\n" + nonce + "\n" + Hash(body) + "\n" + session), "application/x-plist");
                         stream.Write(body, 0, body.Length); Notify("Connected. Choose a DEB in Receptor on your iPad.");
                     } else {
                         SharedPackage item;
                         lock (gate) item = packages.Find(delegate(SharedPackage p) { return p.Id == route.Substring(10); });
                         if (item == null) { Header(stream, 404, 0, null, "text/plain"); return; }
                         Notify("Sending " + item.Name + "…");
-                        Header(stream, 200, item.Size, Mac(key, "response\n" + nonce + "\n" + item.Digest), "application/vnd.debian.binary-package");
+                        Header(stream, 200, item.Size, Mac(key, "response\n" + nonce + "\n" + item.Digest + "\n" + session), "application/vnd.debian.binary-package");
                         item.Send(stream);
                         Notify("Sent " + item.Name + ". Confirm installation on the iPad; this is not an installation result.");
                     }

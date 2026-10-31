@@ -1,6 +1,8 @@
 #import "RCCompanionClient.h"
 #import "ReceptorPaths.h"
 #import "RCCurlTransfer.h"
+#import "RCPairingCrypto.h"
+#import <Security/Security.h>
 #include <curl/curl.h>
 #include <CommonCrypto/CommonDigest.h>
 #include <CommonCrypto/CommonHMAC.h>
@@ -34,6 +36,11 @@ static BOOL RCEqual(NSString *a, NSString *b) {
 static BOOL RCHexString(id value, NSUInteger length) {
     return [value isKindOfClass:[NSString class]] && [value length] == length &&
         [value rangeOfCharacterFromSet:[[NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdef"] invertedSet]].location == NSNotFound;
+}
+static NSMutableDictionary *RCConnectionQuery(void) {
+    return [NSMutableDictionary dictionaryWithObjectsAndKeys:(id)kSecClassGenericPassword, (id)kSecClass,
+        @"com.receptor.desktop", (id)kSecAttrService, @"saved-connection-v2", (id)kSecAttrAccount,
+        @"com.receptor.app", (id)kSecAttrAccessGroup, nil];
 }
 static BOOL RCValidFile(id file) {
     if (![file isKindOfClass:[NSDictionary class]]) return NO;
@@ -94,9 +101,62 @@ static int RCCompanionProgress(void *pointer, curl_off_t total, curl_off_t curre
     (void)total; (void)current; (void)uploadTotal; (void)uploaded;
     return [(RCCompanionClient *)pointer isCancelled] ? 1 : 0;
 }
+static NSArray *RCFetchPairingInfo(RCCompanionClient *client, NSString *host) {
+    RCCompanionContext context; memset(&context, 0, sizeof(context));
+    context.client = client; context.descriptor = -1; context.body = [NSMutableData data]; context.limit = 128;
+    CC_SHA256_Init(&context.hash);
+    CURL *curl = curl_easy_init(); if (!curl) return nil;
+    NSString *url = [NSString stringWithFormat:@"http://%@/v2/pairing?nonce=%@", host, RCNonce()];
+    curl_easy_setopt(curl, CURLOPT_URL, [url UTF8String]);
+    curl_easy_setopt(curl, CURLOPT_PROXY, ""); curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "http");
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L); curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L); curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, RCCompanionWrite); curl_easy_setopt(curl, CURLOPT_WRITEDATA, &context);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, RCCompanionHeader); curl_easy_setopt(curl, CURLOPT_HEADERDATA, &context);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L); curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, RCCompanionProgress);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, client);
+    CURLcode code = curl_easy_perform(curl); long status = 0; curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_cleanup(curl); [context.auth release];
+    if (code != CURLE_OK || status != 200) return nil;
+    NSString *text = [[[NSString alloc] initWithData:context.body encoding:NSASCIIStringEncoding] autorelease];
+    NSArray *parts = [text componentsSeparatedByString:@"\n"];
+    return [parts count] == 3 && [[parts objectAtIndex:0] isEqualToString:@"2"] &&
+        RCHexString([parts objectAtIndex:1], 32) && RCHexString([parts objectAtIndex:2], 32) ? parts : nil;
+}
 
 @implementation RCCompanionClient
 @synthesize delegate = _delegate, busy = _busy;
++ (NSDictionary *)savedConnection {
+    NSMutableDictionary *query = RCConnectionQuery();
+    [query setObject:(id)kCFBooleanTrue forKey:(id)kSecReturnData];
+    [query setObject:(id)kSecMatchLimitOne forKey:(id)kSecMatchLimit];
+    CFTypeRef value = NULL;
+    if (SecItemCopyMatching((CFDictionaryRef)query, &value) != errSecSuccess) return nil;
+    NSString *parseError = nil;
+    id saved = [NSPropertyListSerialization propertyListFromData:(NSData *)value mutabilityOption:NSPropertyListImmutable format:NULL errorDescription:&parseError];
+    CFRelease(value); [parseError release];
+    return [saved isKindOfClass:[NSDictionary class]] && [[saved objectForKey:@"host"] isKindOfClass:[NSString class]] &&
+        RCHexString([saved objectForKey:@"key"], 64) && RCHexString([saved objectForKey:@"salt"], 32) ? saved : nil;
+}
++ (BOOL)forgetSavedConnection {
+    OSStatus status = SecItemDelete((CFDictionaryRef)RCConnectionQuery());
+    return status == errSecSuccess || status == errSecItemNotFound;
+}
+- (BOOL)saveConnection {
+    NSDictionary *saved = [NSDictionary dictionaryWithObjectsAndKeys:_host, @"host", _key, @"key", _salt, @"salt", nil];
+    NSString *error = nil;
+    NSData *data = [NSPropertyListSerialization dataFromPropertyList:saved format:NSPropertyListBinaryFormat_v1_0 errorDescription:&error];
+    [error release]; if (!data) return NO;
+    NSMutableDictionary *query = RCConnectionQuery();
+    NSDictionary *updates = [NSDictionary dictionaryWithObject:data forKey:(id)kSecValueData];
+    OSStatus status = SecItemUpdate((CFDictionaryRef)query, (CFDictionaryRef)updates);
+    if (status == errSecItemNotFound) {
+        [query addEntriesFromDictionary:updates];
+        [query setObject:(id)kSecAttrAccessibleWhenUnlockedThisDeviceOnly forKey:(id)kSecAttrAccessible];
+        status = SecItemAdd((CFDictionaryRef)query, NULL);
+    }
+    return status == errSecSuccess;
+}
 - (id)init {
     if ((self = [super init])) {
         // Share the transport class's once-per-process main-thread initialization.
@@ -122,17 +182,23 @@ static int RCCompanionProgress(void *pointer, curl_off_t total, curl_off_t curre
     }
     NSString *key = [[[code stringByReplacingOccurrencesOfString:@"-" withString:@""]
         stringByReplacingOccurrencesOfString:@" " withString:@""] uppercaseString];
-    if (!valid || !RCHexString([key lowercaseString], 20)) {
-        if (error) *error = RCError(@"Enter the PC's private IPv4 address and port (for example 192.168.1.20:12345), plus its 20-character pairing code.");
+    NSDictionary *saved = [[self class] savedConnection];
+    BOOL useSaved = ![key length] && saved != nil;
+    BOOL validCode = [key length] == 8 && [key rangeOfCharacterFromSet:[[NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"] invertedSet]].location == NSNotFound;
+    if (!valid || (!useSaved && !validCode)) {
+        if (error) *error = RCError(@"Enter the PC address and its 8-character code. For a saved connection, leave the code blank. Both apps must be version 1.3.1 or later.");
         return NO;
     }
-    [_host release]; _host = [host copy]; [_key release]; _key = [key copy];
+    [_host release]; _host = [host copy]; [_key release]; _key = useSaved ? [[saved objectForKey:@"key"] copy] : nil;
+    [_salt release]; _salt = useSaved ? [[saved objectForKey:@"salt"] copy] : nil;
+    [_pairingCode release]; _pairingCode = useSaved ? nil : [key copy];
+    [_session release]; _session = nil;
     _busy = YES; @synchronized(self) { _cancelled = NO; }
     [NSThread detachNewThreadSelector:@selector(run:) toTarget:self withObject:[NSDictionary dictionary]];
     return YES;
 }
 - (BOOL)receiveFile:(NSDictionary *)file error:(NSError **)error {
-    if (_busy || !_host || !RCValidFile(file)) { if (error) *error = RCError(@"Connect to the desktop and choose a valid DEB first."); return NO; }
+    if (_busy || !_host || !_key || !_session || !RCValidFile(file)) { if (error) *error = RCError(@"Connect to the desktop and choose a valid DEB first."); return NO; }
     _busy = YES; @synchronized(self) { _cancelled = NO; }
     [NSThread detachNewThreadSelector:@selector(run:) toTarget:self withObject:[NSDictionary dictionaryWithObject:file forKey:@"file"]];
     return YES;
@@ -140,17 +206,39 @@ static int RCCompanionProgress(void *pointer, curl_off_t total, curl_off_t curre
 - (void)run:(NSDictionary *)operation {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     NSDictionary *file = [operation objectForKey:@"file"];
+    NSString *failure = nil;
+    if (!file) {
+        NSArray *info = RCFetchPairingInfo(self, _host);
+        if (!info) failure = @"Could not reach the desktop. Keep Receptor Desktop 1.3.1 or later open, check the PC address and Wi-Fi, then tap Connect / Refresh. Saved pairing is kept.";
+        else if (!_pairingCode && !RCEqual(_salt, [info objectAtIndex:1])) failure = @"The PC's pairing was reset. Enter the new short code shown on the PC and connect again.";
+        else {
+            if (_pairingCode) {
+                unsigned char salt[16], derived[32];
+                const char *hex = [[info objectAtIndex:1] UTF8String];
+                for (int i = 0; i < 16; ++i) { char pair[3] = {hex[i * 2], hex[i * 2 + 1], 0}; salt[i] = (unsigned char)strtoul(pair, NULL, 16); }
+                RCPairingDerive([_pairingCode UTF8String], salt, derived);
+                [_key release]; _key = [RCHex(derived, sizeof(derived)) copy]; memset(derived, 0, sizeof(derived));
+                [_salt release]; _salt = [[info objectAtIndex:1] copy];
+                [_pairingCode release]; _pairingCode = nil;
+            }
+            [_session release]; _session = [[info objectAtIndex:2] copy];
+        }
+    }
+    if (failure) {
+        [self performSelectorOnMainThread:@selector(finish:) withObject:[NSDictionary dictionaryWithObject:failure forKey:@"error"] waitUntilDone:NO];
+        [pool drain]; return;
+    }
     NSString *nonce = RCNonce();
-    NSString *route = file ? [@"/v1/files/" stringByAppendingString:[file objectForKey:@"id"]] : @"/v1/manifest";
+    NSString *route = file ? [@"/v2/files/" stringByAppendingString:[file objectForKey:@"id"]] : @"/v2/manifest";
     NSString *url = [NSString stringWithFormat:@"http://%@%@?nonce=%@", _host, route, nonce];
-    NSString *mac = RCMac(_key, [NSString stringWithFormat:@"GET\n%@\n%@", route, nonce]);
+    NSString *mac = RCMac(_key, [NSString stringWithFormat:@"GET\n%@\n%@\n%@", route, nonce, _session]);
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
     RCCompanionContext context;
     memset(&context, 0, sizeof(context)); context.client = self; context.descriptor = -1;
     context.body = [NSMutableData data]; context.limit = file ? [[file objectForKey:@"size"] longLongValue] : 131072;
     CC_SHA256_Init(&context.hash);
     NSError *directoryError = nil;
-    NSString *partial = nil, *failure = nil;
+    NSString *partial = nil;
     if (file) {
         if (RCEnsureDownloadsDirectory(&directoryError)) {
             partial = [RCDownloadsDirectory stringByAppendingPathComponent:[NSString stringWithFormat:@".desktop-%@.part", nonce]];
@@ -185,7 +273,7 @@ static int RCCompanionProgress(void *pointer, curl_off_t total, curl_off_t curre
         long status = 0; curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
         unsigned char digest[CC_SHA256_DIGEST_LENGTH]; CC_SHA256_Final(digest, &context.hash);
         NSString *hash = RCHex(digest, sizeof(digest));
-        NSString *responseMAC = RCMac(_key, [NSString stringWithFormat:@"response\n%@\n%@", nonce, hash]);
+        NSString *responseMAC = RCMac(_key, [NSString stringWithFormat:@"response\n%@\n%@\n%@", nonce, hash, _session]);
         if (!failure) {
             if ([self isCancelled]) failure = @"Transfer cancelled.";
             else if (status == 403) failure = @"Pairing failed. Check the code shown on your PC.";
@@ -220,7 +308,7 @@ static int RCCompanionProgress(void *pointer, curl_off_t total, curl_off_t curre
         [parseError release];
         id version = [plist isKindOfClass:[NSDictionary class]] ? [plist objectForKey:@"protocol"] : nil;
         id files = [plist isKindOfClass:[NSDictionary class]] ? [plist objectForKey:@"files"] : nil;
-        BOOL valid = [version isKindOfClass:[NSNumber class]] && [version intValue] == 1 && [files isKindOfClass:[NSArray class]] && [files count] <= 32;
+        BOOL valid = [version isKindOfClass:[NSNumber class]] && [version intValue] == 2 && [files isKindOfClass:[NSArray class]] && [files count] <= 32;
         if (valid) for (id item in files) if (!RCValidFile(item)) { valid = NO; break; }
         if (valid) [result setObject:files forKey:@"files"];
         else failure = @"The desktop returned an invalid package list. Update both apps and reconnect.";
@@ -235,7 +323,12 @@ static int RCCompanionProgress(void *pointer, curl_off_t total, curl_off_t curre
         if ([result objectForKey:@"saved"]) [[NSNotificationCenter defaultCenter] postNotificationName:RCDownloadsChangedNotification object:nil];
         result = [NSDictionary dictionaryWithObject:@"Transfer cancelled. Any file already fully received is available in Files." forKey:@"error"];
     }
+    else if ([result objectForKey:@"files"] && ![self saveConnection]) {
+        NSMutableDictionary *updated = [[result mutableCopy] autorelease];
+        [updated setObject:@"Connected, but iOS could not save the pairing in Keychain. Unlock the device and try connecting again." forKey:@"saveWarning"];
+        result = updated;
+    }
     [_delegate companion:self finished:result];
 }
-- (void)dealloc { [_host release]; [_key release]; [super dealloc]; }
+- (void)dealloc { [_host release]; [_key release]; [_pairingCode release]; [_salt release]; [_session release]; [super dealloc]; }
 @end

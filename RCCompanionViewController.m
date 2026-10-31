@@ -7,6 +7,8 @@
 @interface RCCompanionViewController ()
 - (void)setStatus:(NSString *)status;
 - (void)cancelTransfer;
+- (void)connect;
+- (void)reconnectSaved:(NSNotification *)notification;
 @end
 @implementation RCCompanionViewController
 - (id)init {
@@ -15,7 +17,9 @@
         _address = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 0, 0)];
         _code = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 0, 0)];
         _address.placeholder = @"192.168.1.20:12345";
-        _code.placeholder = @"XXXXX-XXXXX-XXXXX-XXXXX";
+        _code.placeholder = @"ABCD-EFGH";
+        NSDictionary *saved = [RCCompanionClient savedConnection];
+        if (saved) { _address.text = [saved objectForKey:@"host"]; _code.placeholder = @"Saved pairing"; }
         _address.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
         _code.autocapitalizationType = UITextAutocapitalizationTypeAllCharacters;
         _address.autocapitalizationType = UITextAutocapitalizationTypeNone;
@@ -24,8 +28,9 @@
         _address.returnKeyType = _code.returnKeyType = UIReturnKeyDone;
         _address.font = _code.font = [UIFont systemFontOfSize:15];
         _address.contentVerticalAlignment = _code.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
-        _status = [@"Start sharing in Receptor Desktop on your PC, add DEBs, then enter its address and pairing code." copy];
+        _status = [@"Enter the PC address and short code once. Receptor remembers the connection and reconnects next time." copy];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(didEnterBackground:) name:UIApplicationDidEnterBackgroundNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reconnectSaved:) name:UIApplicationDidBecomeActiveNotification object:nil];
     }
     return self;
 }
@@ -34,7 +39,23 @@
     self.navigationItem.rightBarButtonItem = [[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel target:self action:@selector(cancelTransfer)] autorelease];
     self.navigationItem.rightBarButtonItem.enabled = NO;
 }
-- (void)viewWillDisappear:(BOOL)animated { [super viewWillDisappear:animated]; [_client cancel]; }
+- (void)viewDidAppear:(BOOL)animated { [super viewDidAppear:animated]; _visible = YES; [self reconnectSaved:nil]; }
+- (void)viewWillDisappear:(BOOL)animated { [super viewWillDisappear:animated]; _visible = NO; _resumeConnection = NO; [_client cancel]; }
+- (void)reconnectSaved:(NSNotification *)notification {
+    (void)notification;
+    if (!_visible || _installPrompt || [UIApplication sharedApplication].applicationState != UIApplicationStateActive || [_code.text length]) return;
+    NSDictionary *saved = [RCCompanionClient savedConnection];
+    if (!saved || ![[saved objectForKey:@"host"] isEqualToString:_address.text]) return;
+    if (_client.busy) { _resumeConnection = YES; return; }
+    _resumeConnection = NO; [self connect];
+}
+- (void)connect {
+    [_address resignFirstResponder]; [_code resignFirstResponder];
+    [_packages release]; _packages = nil;
+    NSError *error = nil;
+    if ([_client connectToHost:_address.text code:_code.text error:&error]) [self setStatus:@"Connecting to the desktop…"];
+    else [self setStatus:[error localizedDescription]];
+}
 - (void)setStatus:(NSString *)status {
     [_status release]; _status = [status copy];
     self.navigationItem.rightBarButtonItem.enabled = _client.busy;
@@ -48,7 +69,7 @@
 - (BOOL)textFieldShouldReturn:(UITextField *)field { [field resignFirstResponder]; return YES; }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { (void)tableView; return 2; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    (void)tableView; return section == 0 ? 3 : [_packages count];
+    (void)tableView; return section == 0 ? 4 : [_packages count];
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     (void)tableView; return section == 0 ? @"Pair with your PC" : @"DEBs on desktop";
@@ -67,7 +88,7 @@
         field.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         [cell.contentView addSubview:field]; cell.selectionStyle = UITableViewCellSelectionStyleNone;
     } else if (indexPath.section == 0) {
-        cell.textLabel.text = @"Connect / Refresh";
+        cell.textLabel.text = indexPath.row == 2 ? @"Connect / Refresh" : @"Forget saved connection";
         cell.textLabel.textColor = _client.busy ? [UIColor grayColor] : [UIColor colorWithRed:0 green:0.35f blue:0.75f alpha:1];
     } else {
         NSDictionary *file = [_packages objectAtIndex:indexPath.row];
@@ -83,9 +104,14 @@
     [_address resignFirstResponder]; [_code resignFirstResponder];
     NSError *error = nil;
     if (indexPath.section == 0) {
-        [_packages release]; _packages = nil;
-        if ([_client connectToHost:_address.text code:_code.text error:&error]) [self setStatus:@"Connecting to the desktop…"];
-        else [self setStatus:[error localizedDescription]];
+        if (indexPath.row == 3) {
+            if (![RCCompanionClient forgetSavedConnection]) { [self setStatus:@"Could not remove the saved pairing. Unlock the device and try again."]; return; }
+            _resumeConnection = NO; _client.delegate = nil; [_client release];
+            _client = [[RCCompanionClient alloc] init]; _client.delegate = self;
+            [_packages release]; _packages = nil;
+            _address.text = @""; _code.text = @""; _code.placeholder = @"ABCD-EFGH";
+            [self setStatus:@"Saved connection forgotten on this device. Enter an address and short code to pair again."];
+        } else [self connect];
     } else {
         if ([[RCDEBInstaller sharedInstaller] busy] || [[RCIPAInstaller sharedInstaller] busy]) {
             [self setStatus:@"Wait for the current installation to finish first."]; return;
@@ -97,12 +123,15 @@
 }
 - (void)companion:(RCCompanionClient *)client finished:(NSDictionary *)result {
     (void)client;
+    if (_resumeConnection) { _resumeConnection = NO; [self reconnectSaved:nil]; if (_client.busy) return; }
     NSString *failure = [result objectForKey:@"error"];
     if (failure) { [self setStatus:failure]; return; }
     NSArray *files = [result objectForKey:@"files"];
     if (files) {
         [_packages release]; _packages = [files copy];
-        [self setStatus:[files count] ? @"Paired. Choose a DEB below." : @"Paired. Add DEBs on the PC, then tap Connect / Refresh."];
+        NSString *warning = [result objectForKey:@"saveWarning"];
+        if (!warning) { _code.text = @""; _code.placeholder = @"Saved pairing"; }
+        [self setStatus:warning ?: ([files count] ? @"Paired and remembered. Choose a DEB below." : @"Connection remembered. Add DEBs on the PC, then tap Connect / Refresh.")];
     }
     NSString *saved = [result objectForKey:@"saved"];
     if (saved) {
