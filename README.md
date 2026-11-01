@@ -1,6 +1,6 @@
 # Receptor
 
-Safari downloads, a standalone file browser and IPA/DEB installation for **jailbroken iOS 4.0–6.1, armv7**. Built with **SDK 5.0**, targeting **iOS 4.0**, using manual reference counting.
+Safari downloads, a standalone file browser and IPA/DEB installation for **jailbroken iOS 4.0–6.x, armv7**. Built with **SDK 5.0**, targeting **iOS 4.0**, using manual reference counting.
 
 ## Install
 
@@ -18,9 +18,21 @@ GitHub Pages enforces HTTPS. Some legacy Cydia clients may not support its TLS/c
 
 Requires a rootful jailbreak and Cydia Substrate. The jailbreak must permit access to `/var/mobile/Media/Receptor/`. No global sandbox patch or certificate-validation bypass is installed. A compatible AppSync setup may be needed for IPAs that are not validly signed for the device; it is not installed automatically.
 
+## Profiles, Catbox and Photos (1.4.1)
+
+Safari configuration profiles and certificates are left to the native system installer, including `.mobileconfig`, `.cer`, `.crt`, `.der`, `.p12` and `.pfx`, their recognized installer MIME types, and response-suggested installer filenames. Receptor no longer consumes those responses as generic unsupported downloads. The system installer retains review/confirmation; Receptor does not install profiles or trust roots itself. After updating, fully close/reopen Safari before retrying a profile link. If a profile was already downloaded into Receptor, revisit its original link in Safari. This follows Apple's documented [Safari certificate/identity installation path](https://developer.apple.com/library/archive/qa/qa1745/_index.html).
+
+Direct app downloads now supply a default `Receptor/1.4.1 (iOS)` User-Agent when the request has none. This fixes a reproduced Catbox connection close (`curl 56`, `ssl_read returned: (-0x0000)`). Existing browser User-Agent headers are preserved. Certificate-chain and hostname checks remain enabled. The reported direct PNG succeeded in a full-body test with the pinned curl/Mbed TLS stack; the URL/content is not included in the source or release notes.
+
+Use **Save to Photos** from a file's actions or the image preview's bottom toolbar. Supported images and `.mov`/`.mp4`/`.m4v` videos use AssetsLibrary and show success or the system's error. iOS 4.1–6 receives original encoded image data, preserving source resolution/metadata rather than saving the reduced preview. Images have a 64 MB import limit. iOS 4.0 uses its older decoded-image API with a 6-megapixel limit. Codec support and Photos permissions still apply.
+
+**Share…** is separate from **Open In…**. On iOS 6 it presents the public system activity sheet, in a popover on iPad. On iOS 4–5 it presents a legacy menu with Save to Photos for supported media and Open In. Open In is an app picker: if no installed app registers support for the file type, an explanatory message appears. The image preview includes direct Save to Photos and Open In buttons as well as Share.
+
+This is an iOS-side update; the Windows companion remains version 1.4.0 and saved pairing is unchanged.
+
 ## Browse, preview and share files (1.4.0)
 
-The file browser now opens in an adaptive grid inspired by the iOS Files app, with image thumbnails, file-type icons and filename search. Use **Grid / List** to switch layouts; Receptor remembers your choice. Tap a supported image for a full-screen preview with pinch/double-tap zoom. Documents use Quick Look where supported. Hold a file, tap its **•••** button (grid) or detail button (list), then choose **Open In…** to send it to a compatible installed app. The image viewer also has an action button for Open In. Package menus retain their explicit Install action. Use Edit and tap a grid tile, or swipe a list row, to delete with confirmation.
+The file browser now opens in an adaptive grid inspired by the iOS Files app, with image thumbnails, file-type icons and filename search. Use **Grid / List** to switch layouts; Receptor remembers your choice. Tap a supported image for a full-screen preview with pinch/double-tap zoom. Documents use Quick Look where supported. Hold a file, tap its **•••** button (grid) or detail button (list), then choose **Open In…** to send it to a compatible installed app. The image viewer has Share, Save to Photos and Open In controls. Package menus retain their explicit Install action. Use Edit and tap a grid tile, or swipe a list row, to delete with confirmation.
 
 The grid uses reusable table rows on iOS 4–6. Image thumbnails are generated off the main thread with a bounded cache. Previews use an orientation-correct image capped at 1600 pixels; images larger than 25 megapixels or unsupported by legacy ImageIO show a fallback message and remain available to Open In. Animated images preview their first frame. This is a Files-inspired browser for the Receptor download directory, rather than the full iOS 11 Files app or a whole-filesystem explorer.
 
@@ -36,7 +48,7 @@ Update both apps to 1.4.0 for all-file transfers. Saved pairings from 1.3.1 cont
 
 - **Safari:** tap a downloadable link and choose Download. Completion alerts offer **Open Receptor**. The floating Files window from 1.0.0 has been removed.
 - **Receptor app:** browse completed files, see transfers started in Safari or Receptor, swipe a transfer to cancel, and use Edit or the file menu to delete saved files. Tap **+** to paste an HTTP(S) file URL and download directly in the app. This is also useful if Safari's own TLS stack cannot reach a page before Receptor receives a policy callback.
-- **Preview and sharing:** tap an image for zoomable preview, or a document for Quick Look. Use the file actions → Open In to send any file to a compatible installed app. Legacy OS codecs and the receiving app determine supported formats.
+- **Preview and sharing:** tap an image for zoomable preview, or a document for Quick Look. Use the file actions → Share or Open In to send any file to a compatible installed app. Legacy OS codecs and the receiving app determine supported formats.
 - **Install IPA:** tap a saved `.ipa`, select **Install IPA**, and confirm. Installation may replace an existing app version. iOS's native installer checks package/device compatibility and signing; Receptor does not decrypt FairPlay-protected apps, forge signatures or force incompatible apps onto the device. Installations run off the UI thread and report progress and the native return code on failure.
 - **Install DEB (1.2.0):** close Cydia, tap a saved `.deb`, choose **Install DEB**, and confirm. Receptor invokes the device's `dpkg`, so successfully installed packages appear in Cydia's **Installed** list after reopening Cydia. **Install Log** shows the last package-manager output, and the toolbar's **Cydia** button opens Cydia. A DEB can run maintainer scripts as root; install only packages you intend to trust. If dependencies are missing, install them through Cydia and retry. A failed install may leave an unpacked/unconfigured package; use Cydia's reported repair/configuration steps. Receptor does not force installation, delete lock files, automatically remove packages, or fetch dependencies. Keep Receptor open and wait for the result; respring afterward if the package requires it.
 
@@ -80,7 +92,7 @@ The local `lib/libLegacySubstrate.tbd` is a link-time interface pointing to `/us
 | `Tweak.x`, `ReceptorPolicyProxy.*` | Guarded legacy WebKit policy-delegate interception in MobileSafari |
 | `RCCurlTransfer.*` | Worker-thread HTTP(S), portable TLS, response/filename parsing, redirect rules |
 | `DownloadManager.*` | Streamed disk writes, active transfers, background tasks, cancellation and status snapshots |
-| `App/`, `FileBrowserViewController.*`, `RCFileArtwork.*` | Home screen app, grid/list browser, search, image thumbnails/zoom, Open In, URL downloads and install UI |
+| `App/`, `FileBrowserViewController.*`, `RCFileArtwork.*`, `RCFileSharing.*` | Home screen app, grid/list browser, search, image thumbnails/zoom, Photos saving, Share/Open In, URL downloads and install UI |
 | `RCIPAInstaller.*` | Guarded dynamic lookup of `MobileInstallationInstall` on supported legacy firmware |
 | `RCDEBInstaller.*`, `Tools/receptor-deb-helper.c` | Confirmed local DEB installation, bounded output/logging and fixed-operation root helper |
 | `Desktop/`, `RCCompanionClient.*`, `RCCompanionViewController.*` | Windows Wi-Fi file sharing, authenticated transfer and on-device installation consent |
@@ -104,13 +116,18 @@ The root helper is limited to package installation and is not a general privileg
 
 1.2.0 compiles, links, signs and packages for armv7 with SDK 5.0 and an iOS 4.0 minimum. Package checks validate the app manifest, executable headers, icon resources, CA bundle, tweak, root helper and repository checksums. Native Linux tests of the same curl/Mbed TLS versions pass TLS 1.2 downloads and redirects and reject untrusted issuers and wrong hostnames. The transport also successfully retrieved response bodies from Archive.org and GitHub Pages. An Obscura-linked VLC IPA endpoint reached its storage host but returned HTTP 500 during testing; successful TLS does not guarantee an archive file is available.
 
-**Physical-device validation is still required**, particularly on the reported iPad 1 / iOS 5.1.1. Compilation and native transport tests cannot certify private Safari hooks, Home screen registration or installation/signing behavior on the device.
+**Physical-device validation of each new feature is still required**. User-reported versions now include iOS 5.1.1 and iOS 6.1.3. Compilation and native transport tests cannot certify private Safari hooks, Home screen registration or installation/signing behavior on the device.
 
 1.4.0 adds arbitrary file transfers, a grid/list browser, filename search, bounded image previews and Open In for every file. Eight-character codes and saved pairing from 1.3.1 are retained. It compiles the iOS pairing client against SDK 5.0 for armv7/iOS 4. Protocol integration tests exercise the actual Windows server, authentication/replay rejection, streamed immutable file contents, malformed requests and shutdown. The desktop form has been rendered for layout inspection. Updated tests verify PNG/text/ZIP/IPA/DEB/binary/extensionless/empty-file transfers, DPAPI persistence, remembered pairing after a server restart, stale-session rejection, reset and the production C key-derivation loop against independent vectors. The new iOS grid, preview/rotation/zoom and Open In flows require physical-device testing. Pairing, receiving and installation through the new iOS screen still need testing on the physical device.
 
-Latest user-reported iPad 1 / iOS 5.1.1 results: three IPA downloads completed and one installed app launched. Two other app launch failures remain unexplained; compatibility, signing and other app-specific causes have not been established. DEB installation appearing in Cydia has not yet been confirmed on-device. Treat the current release as experimental and the full iOS 4–6 range as intended targets rather than a validated support matrix.
+User also reports Receptor works on **iOS 6.1.3**, without specifying the device or complete feature coverage. iOS 6.x patch releases are included by the package requirement `firmware (>= 4.0), firmware (<< 7.0)`.
+
+Earlier user-reported iPad 1 / iOS 5.1.1 results: three IPA downloads completed and one installed app launched. Two other app launch failures remain unexplained; compatibility, signing and other app-specific causes have not been established. DEB installation appearing in Cydia has not yet been confirmed on-device. Treat the current release as experimental and the full iOS 4–6 range as intended targets rather than a validated support matrix.
+
+1.4.1 compiles/signs for the same legacy target. Native tests exercise the production installer-content classifier, including extension/MIME lookalikes, and a TLS regression endpoint that closes requests lacking the User-Agent. Valid downloads still pass, and untrusted/hostname-mismatched certificates still fail. The new native installer handoff, Photos import and iOS 6/legacy sharing UI need on-device validation.
 
 ```sh
+python3 tests/test_system_content.py
 python3 tests/check_project.py
 python3 scripts/update-repository.py
 python3 tests/check_repository.py

@@ -1,6 +1,7 @@
 #import "RCFileArtwork.h"
 #import "ReceptorPaths.h"
 #import "ReceptorUI.h"
+#import "RCFileSharing.h"
 #import <ImageIO/ImageIO.h>
 #import <MobileCoreServices/UTType.h>
 #import <MobileCoreServices/UTCoreTypes.h>
@@ -119,7 +120,7 @@ UIImage *RCFileIcon(NSString *name) {
 @end
 @implementation RCImagePreviewController
 - (id)initWithFileName:(NSString *)name {
-    if ((self = [super init])) { _name = [name copy]; self.title = name; }
+    if ((self = [super init])) { _name = [name copy]; self.title = name; _sharing = [[RCFileShareController alloc] initWithViewController:self]; }
     return self;
 }
 - (void)loadView {
@@ -141,7 +142,11 @@ UIImage *RCFileIcon(NSString *name) {
     [self.view addSubview:_spinner]; [_spinner startAnimating];
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(doubleTap:)];
     tap.numberOfTapsRequired = 2; [_scroll addGestureRecognizer:tap]; [tap release];
-    self.navigationItem.rightBarButtonItem = [[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(openIn)] autorelease];
+    self.navigationItem.rightBarButtonItem = [[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(share)] autorelease];
+    UIBarButtonItem *save = [[[UIBarButtonItem alloc] initWithTitle:@"Save to Photos" style:UIBarButtonItemStylePlain target:self action:@selector(saveToPhotos)] autorelease];
+    UIBarButtonItem *space = [[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
+    UIBarButtonItem *open = [[[UIBarButtonItem alloc] initWithTitle:@"Open In…" style:UIBarButtonItemStylePlain target:self action:@selector(openIn)] autorelease];
+    self.toolbarItems = [NSArray arrayWithObjects:save, space, open, nil];
     [NSThread detachNewThreadSelector:@selector(loadImage) toTarget:self withObject:nil];
 }
 - (void)loadImage {
@@ -177,14 +182,11 @@ UIImage *RCFileIcon(NSString *name) {
     [_scroll zoomToRect:CGRectMake(point.x - size.width / 2, point.y - size.height / 2, size.width, size.height) animated:YES];
 }
 - (void)openIn {
-    if (!RCIsRegularDownload(_name)) { [[ReceptorUI sharedUI] showMessage:@"This file is no longer available."]; return; }
-    [_documentController dismissMenuAnimated:NO]; _documentController.delegate = nil; [_documentController release];
-    _documentController = [[UIDocumentInteractionController interactionControllerWithURL:[NSURL fileURLWithPath:[RCDownloadsDirectory stringByAppendingPathComponent:_name]]] retain];
-    _documentController.delegate = self;
-    if (![_documentController.UTI length]) _documentController.UTI = @"public.data";
-    if (![_documentController presentOpenInMenuFromBarButtonItem:self.navigationItem.rightBarButtonItem animated:YES])
-        [[ReceptorUI sharedUI] showMessage:@"No installed app accepts this file type through Open In. Install a compatible app and try again."];
+    [_sharing openFileInApp:_name fromRect:CGRectMake(self.view.bounds.size.width - 44, 0, 44, 1)];
 }
+- (void)share { [_sharing shareFile:_name fromRect:CGRectMake(self.view.bounds.size.width - 44, 0, 44, 1)]; }
+- (void)saveToPhotos { [RCFileShareController saveToPhotos:_name]; }
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self.navigationController setToolbarHidden:NO animated:animated]; }
 - (void)didRotateFromInterfaceOrientation:(UIInterfaceOrientation)orientation { [super didRotateFromInterfaceOrientation:orientation]; [self fitImage]; }
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)orientation {
     return UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad || orientation != UIInterfaceOrientationPortraitUpsideDown;
@@ -194,9 +196,8 @@ UIImage *RCFileIcon(NSString *name) {
     [_imageView release]; _imageView = nil; [_spinner release]; _spinner = nil; [_message release]; _message = nil;
     [super viewDidUnload];
 }
-- (UIViewController *)documentInteractionControllerViewControllerForPreview:(UIDocumentInteractionController *)controller { (void)controller; return self; }
 - (void)dealloc {
-    _scroll.delegate = nil; _documentController.delegate = nil; [_documentController dismissMenuAnimated:NO]; [_documentController release];
+    _scroll.delegate = nil; [_sharing release];
     [_name release]; [_scroll release]; [_imageView release]; [_spinner release]; [_message release]; [super dealloc];
 }
 @end

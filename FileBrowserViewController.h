@@ -1,12 +1,13 @@
 #import <UIKit/UIKit.h>
 #import <QuickLook/QuickLook.h>
+@class RCFileShareController;
 
-@interface FileBrowserViewController : UITableViewController <QLPreviewControllerDataSource, UIDocumentInteractionControllerDelegate, UIActionSheetDelegate, UIAlertViewDelegate, UISearchBarDelegate> {
+@interface FileBrowserViewController : UITableViewController <QLPreviewControllerDataSource, UIActionSheetDelegate, UIAlertViewDelegate, UISearchBarDelegate> {
     NSArray *_allFiles;
     NSArray *_files;
     NSArray *_activeDownloads;
     NSArray *_previewURLs;
-    UIDocumentInteractionController *_documentController;
+    RCFileShareController *_sharing;
     NSString *_storageError;
     UIActionSheet *_fileActions;
     NSString *_selectedPackage;

@@ -23,6 +23,12 @@ static int transfer(const char *url, const char *roots) {
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
     curl_easy_setopt(curl, CURLOPT_PROXY, "");
     curl_easy_setopt(curl, CURLOPT_RANGE, "0-4095");
+    /* Optional diagnostics; never change certificate verification. */
+    const char *agent = getenv("RC_PROBE_USER_AGENT");
+    if (!getenv("RC_PROBE_NO_USER_AGENT")) curl_easy_setopt(curl, CURLOPT_USERAGENT, agent ? agent : "Receptor/1.4.1 (iOS)");
+    if (getenv("RC_PROBE_TLS12")) curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2 | CURL_SSLVERSION_MAX_TLSv1_2);
+    if (getenv("RC_PROBE_VERBOSE")) curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+    if (getenv("RC_PROBE_NO_RANGE")) curl_easy_setopt(curl, CURLOPT_RANGE, NULL);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 20L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 45L);
     curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, error);

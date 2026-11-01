@@ -1,6 +1,7 @@
 #import "ReceptorPolicyProxy.h"
 #import "ReceptorPaths.h"
 #import "ReceptorUI.h"
+#import "RCSystemContent.h"
 #include <string.h>
 
 @protocol RCPolicyDecisionListener <NSObject>
@@ -55,6 +56,7 @@ static BOOL RCIsClickedFile(NSDictionary *action, NSURLRequest *request) {
 }
 
 static BOOL RCConsume(NSURLRequest *request, id listener) {
+    if (RCIsSystemInstallerContent([[[request URL] path] pathExtension].UTF8String, NULL)) return NO;
     if (!RCIsDownloadRequest(request) || ![listener respondsToSelector:@selector(ignore)]) return NO;
     // Resolve policy synchronously on WebKit's calling thread. Never carry a listener
     // across threads or leave a navigation suspended while a UIKit alert is visible.
@@ -100,7 +102,13 @@ static BOOL RCConsume(NSURLRequest *request, id listener) {
 }
 - (void)webView:(id)view decidePolicyForMIMEType:(NSString *)MIMEType
         request:(NSURLRequest *)request frame:(id)frame decisionListener:(id)listener {
+    // Native system installers must see these responses even if WebView cannot render them.
+    if (RCIsSystemInstallerContent([[[request URL] path] pathExtension].UTF8String, [MIMEType UTF8String])) {
+        [_originalDelegate webView:view decidePolicyForMIMEType:MIMEType request:request frame:frame decisionListener:listener];
+        return;
+    }
     BOOL downloadable = NO;
+    BOOL systemInstaller = NO;
     if (RCMethodHasObjectArguments(_originalDelegate, _cmd, 7) && RCIsMainFrame(view, frame)) {
         if ([[view class] respondsToSelector:@selector(canShowMIMEType:)]) {
             downloadable = ![[view class] canShowMIMEType:MIMEType];
@@ -109,6 +117,7 @@ static BOOL RCConsume(NSURLRequest *request, id listener) {
             id source = [frame provisionalDataSource];
             NSURLResponse *response = [source respondsToSelector:@selector(response)] ? [source response] : nil;
             if ([response isKindOfClass:[NSHTTPURLResponse class]]) {
+                systemInstaller = RCIsSystemInstallerContent([[response suggestedFilename] pathExtension].UTF8String, [[response MIMEType] UTF8String]);
                 NSDictionary *headers = [(NSHTTPURLResponse *)response allHeaderFields];
                 for (NSString *key in headers) {
                     if ([key caseInsensitiveCompare:@"Content-Disposition"] == NSOrderedSame) {
@@ -121,7 +130,7 @@ static BOOL RCConsume(NSURLRequest *request, id listener) {
             }
         }
     }
-    if (downloadable && RCConsume(request, listener)) return;
+    if (!systemInstaller && downloadable && RCConsume(request, listener)) return;
     [_originalDelegate webView:view decidePolicyForMIMEType:MIMEType request:request frame:frame decisionListener:listener];
 }
 @end

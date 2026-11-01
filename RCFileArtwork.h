@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+@class RCFileShareController;
 
 BOOL RCIsImageFile(NSString *name);
 UIImage *RCFileIcon(NSString *name);
@@ -20,13 +21,13 @@ UIImage *RCLoadImageThumbnail(NSString *name, NSUInteger pixels);
 - (void)setName:(NSString *)name size:(NSString *)size editing:(BOOL)editing;
 @end
 
-@interface RCImagePreviewController : UIViewController <UIScrollViewDelegate, UIDocumentInteractionControllerDelegate> {
+@interface RCImagePreviewController : UIViewController <UIScrollViewDelegate> {
     NSString *_name;
     UIScrollView *_scroll;
     UIImageView *_imageView;
     UIActivityIndicatorView *_spinner;
     UILabel *_message;
-    UIDocumentInteractionController *_documentController;
+    RCFileShareController *_sharing;
 }
 - (id)initWithFileName:(NSString *)name;
 @end

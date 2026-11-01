@@ -5,7 +5,7 @@ INSTALL_TARGET_PROCESSES = MobileSafari ReceptorApp
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = Receptor
-Receptor_FILES = Tweak.x ReceptorPolicyProxy.m ReceptorUI.m ReceptorPaths.m DownloadManager.m RCCurlTransfer.m
+Receptor_FILES = Tweak.x ReceptorPolicyProxy.m RCSystemContent.c ReceptorUI.m ReceptorPaths.m DownloadManager.m RCCurlTransfer.m
 Receptor_FRAMEWORKS = UIKit Foundation QuickLook MobileCoreServices
 # Modern Theos stubs point at the newer CydiaSubstrate.framework location.
 # Link the legacy install name used by Substrate on iOS 4 through 6.
@@ -16,8 +16,8 @@ Receptor_CFLAGS = -fno-objc-arc -fblocks -Wall -Wextra -I$(THEOS_PROJECT_DIR)/ve
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 APPLICATION_NAME = ReceptorApp
-ReceptorApp_FILES = App/main.m App/RCAppDelegate.m ReceptorUI.m ReceptorPaths.m DownloadManager.m RCCurlTransfer.m FileBrowserViewController.m RCFileArtwork.m RCIPAInstaller.m RCDEBInstaller.m RCCompanionClient.m RCCompanionViewController.m RCPairingCrypto.c
-ReceptorApp_FRAMEWORKS = UIKit Foundation QuickLook MobileCoreServices Security ImageIO CoreGraphics
+ReceptorApp_FILES = App/main.m App/RCAppDelegate.m ReceptorUI.m ReceptorPaths.m DownloadManager.m RCCurlTransfer.m FileBrowserViewController.m RCFileArtwork.m RCFileSharing.m RCIPAInstaller.m RCDEBInstaller.m RCCompanionClient.m RCCompanionViewController.m RCPairingCrypto.c
+ReceptorApp_FRAMEWORKS = UIKit Foundation QuickLook MobileCoreServices Security ImageIO CoreGraphics AssetsLibrary
 ReceptorApp_LIBRARIES = curl mbedtls mbedx509 mbedcrypto
 ReceptorApp_LDFLAGS = -L$(THEOS_PROJECT_DIR)/vendor/tls/lib
 ReceptorApp_CFLAGS = -fno-objc-arc -fblocks -Wall -Wextra -I$(THEOS_PROJECT_DIR)/vendor/tls/include

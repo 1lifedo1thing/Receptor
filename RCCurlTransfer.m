@@ -161,6 +161,9 @@ static BOOL RCSameOrigin(NSURL *a, NSURL *b) {
         curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, RCProgressCallback);
         curl_easy_setopt(curl, CURLOPT_XFERINFODATA, self);
         NSMutableDictionary *headers = [NSMutableDictionary dictionaryWithDictionary:[_request allHTTPHeaderFields] ?: [NSDictionary dictionary]];
+        // Some hosts terminate anonymous HTTP clients without an HTTP response.
+        // Preserve a browser-supplied identity; direct app requests get a stable one.
+        if (![RCHeader(headers, @"User-Agent") length]) [headers setObject:@"Receptor/1.4.1 (iOS)" forKey:@"User-Agent"];
         if (!RCHeader(headers, @"Cookie")) {
             NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookiesForURL:[_request URL]];
             [headers addEntriesFromDictionary:[NSHTTPCookie requestHeaderFieldsWithCookies:cookies ?: [NSArray array]]];

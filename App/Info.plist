@@ -6,8 +6,9 @@
 <key>CFBundleDisplayName</key><string>Receptor</string>
 <key>CFBundleExecutable</key><string>ReceptorApp</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>1.4.0</string>
-<key>CFBundleShortVersionString</key><string>1.4.0</string>
+<key>CFBundleVersion</key><string>1.4.1</string>
+<key>CFBundleShortVersionString</key><string>1.4.1</string>
+<key>NSPhotoLibraryUsageDescription</key><string>Save the images and videos you choose to your photo library.</string>
 <key>MinimumOSVersion</key><string>4.0</string>
 <key>LSRequiresIPhoneOS</key><true/>
 <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>

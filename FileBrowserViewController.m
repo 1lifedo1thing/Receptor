@@ -6,6 +6,7 @@
 #import "RCDEBInstaller.h"
 #import "RCCompanionViewController.h"
 #import "RCFileArtwork.h"
+#import "RCFileSharing.h"
 #include <math.h>
 #include <unistd.h>
 #include <errno.h>
@@ -39,6 +40,7 @@ static BOOL RCInstallingPackage(void) {
     if ((self = [super initWithStyle:style])) {
         _grid = ![[[NSUserDefaults standardUserDefaults] stringForKey:@"RCBrowserLayout"] isEqualToString:@"list"];
         _columns = 2;
+        _sharing = [[RCFileShareController alloc] initWithViewController:self];
         _thumbnailCache = [[NSCache alloc] init]; _thumbnailCache.totalCostLimit = 6 * 1024 * 1024; _thumbnailCache.countLimit = 128;
         _thumbnailQueue = [[NSOperationQueue alloc] init]; _thumbnailQueue.maxConcurrentOperationCount = 1;
         _thumbnailPending = [[NSMutableSet alloc] init];
@@ -211,7 +213,7 @@ static BOOL RCInstallingPackage(void) {
     if (section == 0) return [_activeDownloads count] ? @"Swipe a transfer to cancel. Keep its app in the foreground." : @"Tap + to download, or Desktop to receive files from your PC.";
     if (_storageError) return _storageError;
     if (![_files count]) return [_allFiles count] ? @"No files match your search." : @"Your files appear here. Receive any file through Desktop or download a link with +.";
-    return self.editing ? @"Tap a grid tile or swipe a list row to delete a file." : @"Tap to preview. Hold a file or tap ••• for Open In, installation and deletion. Open In requires an installed app that accepts the file type.";
+    return self.editing ? @"Tap a grid tile or swipe a list row to delete a file." : @"Tap to preview. Hold a file or tap ••• for Share, Save to Photos, Open In, installation and deletion. Open In lists compatible installed apps.";
 }
 - (NSString *)artworkKeyForFile:(NSString *)name {
     NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:[RCDownloadsDirectory stringByAppendingPathComponent:name] error:NULL];
@@ -324,6 +326,8 @@ static BOOL RCInstallingPackage(void) {
     BOOL package = [extension isEqualToString:@"deb"] || [extension isEqualToString:@"ipa"];
     NSMutableArray *titles = [NSMutableArray array];
     [titles addObject:package ? ([extension isEqualToString:@"deb"] ? @"Install DEB" : @"Install IPA") : @"Preview"];
+    [titles addObject:@"Share…"];
+    if ([RCFileShareController canSaveToPhotos:name]) [titles addObject:@"Save to Photos"];
     [titles addObject:@"Open In…"];
     [titles addObject:@"Delete"];
     [_actionTitles release]; _actionTitles = [titles copy];
@@ -355,13 +359,7 @@ static BOOL RCInstallingPackage(void) {
     }
 }
 - (void)openSelectedFileInApp {
-    if (!RCIsRegularDownload(_selectedPackage)) return;
-    [_documentController dismissMenuAnimated:NO]; _documentController.delegate = nil; [_documentController release];
-    NSURL *url = [NSURL fileURLWithPath:[RCDownloadsDirectory stringByAppendingPathComponent:_selectedPackage]];
-    _documentController = [[UIDocumentInteractionController interactionControllerWithURL:url] retain]; _documentController.delegate = self;
-    if (![_documentController.UTI length]) _documentController.UTI = @"public.data";
-    if (![_documentController presentOpenInMenuFromRect:_actionAnchor inView:self.tableView animated:YES])
-        [[ReceptorUI sharedUI] showMessage:@"No installed app accepts this file type through Open In. Install a compatible app and try again."];
+    [_sharing openFileInApp:_selectedPackage fromRect:_actionAnchor];
 }
 - (void)deleteSelectedFile {
     if (_deletePrompt || _fileActions || _installPrompt || RCInstallingPackage() || !RCIsRegularDownload(_selectedPackage)) return;
@@ -373,6 +371,8 @@ static BOOL RCInstallingPackage(void) {
     if (buttonIndex < 0 || buttonIndex >= (NSInteger)[_actionTitles count] || !RCIsRegularDownload(_selectedPackage)) return;
     NSString *action = [_actionTitles objectAtIndex:buttonIndex];
     if ([action isEqualToString:@"Open In…"]) [self openSelectedFileInApp];
+    else if ([action isEqualToString:@"Share…"]) [_sharing shareFile:_selectedPackage fromRect:_actionAnchor];
+    else if ([action isEqualToString:@"Save to Photos"]) [RCFileShareController saveToPhotos:_selectedPackage];
     else if ([action isEqualToString:@"Delete"]) [self deleteSelectedFile];
     else if ([action isEqualToString:@"Preview"]) {
         NSString *extension = [[_selectedPackage pathExtension] lowercaseString];
@@ -443,13 +443,9 @@ static BOOL RCInstallingPackage(void) {
 - (id<QLPreviewItem>)previewController:(QLPreviewController *)controller previewItemAtIndex:(NSInteger)index {
     (void)controller; return [_previewURLs objectAtIndex:index];
 }
-- (UIViewController *)documentInteractionControllerViewControllerForPreview:(UIDocumentInteractionController *)controller {
-    (void)controller; return self;
-}
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    _documentController.delegate = nil;
-    [_documentController dismissMenuAnimated:NO]; [_documentController release];
+    [_sharing release];
     [_files release]; [_activeDownloads release]; [_previewURLs release]; [_storageError release];
     _fileActions.delegate = nil; [_fileActions dismissWithClickedButtonIndex:_fileActions.cancelButtonIndex animated:NO]; [_fileActions release];
     _installPrompt.delegate = nil; [_installPrompt dismissWithClickedButtonIndex:0 animated:NO]; [_installPrompt release];

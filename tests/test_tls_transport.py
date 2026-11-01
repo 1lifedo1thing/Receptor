@@ -3,6 +3,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import ssl
+import os
 import subprocess
 import tempfile
 import threading
@@ -14,6 +15,9 @@ CA = ROOT / "layout/Library/Application Support/Receptor/cacert.pem"
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/requires-user-agent" and self.headers.get('User-Agent') != 'Receptor/1.4.1 (iOS)':
+            self.close_connection = True
+            return  # Some hosts close anonymous-client connections without an HTTP response.
         payload = b"Receptor TLS 1.2 fixture\n"
         if self.path == "/redirect":
             self.send_response(302)
@@ -29,11 +33,14 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-def probe(url, roots, expected, concurrent=False):
+def probe(url, roots, expected, concurrent=False, no_agent=False):
     command = [str(PROBE), url, str(roots)] + (["3"] if concurrent else [])
-    result = subprocess.run(command, capture_output=True, text=True, timeout=55)
+    environment = os.environ.copy()
+    if no_agent: environment['RC_PROBE_NO_USER_AGENT'] = '1'
+    else: environment.pop('RC_PROBE_NO_USER_AGENT', None)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=55, env=environment)
     print(result.stdout.strip())
-    assert result.returncode == expected, (url, result.returncode, result.stderr)
+    assert result.returncode in (expected if isinstance(expected, tuple) else (expected,)), (url, result.returncode, result.stderr)
 
 
 def main():
@@ -57,13 +64,15 @@ def main():
             probe(base + "/payload.ipa", cert, 0)
             probe(base + "/redirect", cert, 0)
             probe(base + "/payload.ipa", cert, 0, concurrent=True)
+            probe(base + "/requires-user-agent", cert, 0)
+            probe(base + "/requires-user-agent", cert, (52, 56), no_agent=True)
             probe(base + "/payload.ipa", CA, 60)  # Untrusted issuer must fail.
             probe("https://127.0.0.1:%d/payload.ipa" % server.server_port, cert, 60)  # Wrong hostname must fail.
         finally:
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
-    print("PASS: TLS 1.2 body download, HTTPS redirect, three concurrent transfers, untrusted issuer and wrong-host rejection")
+    print("PASS: TLS 1.2 body download, HTTPS redirect, concurrent transfers, User-Agent-required host, untrusted issuer and wrong-host rejection")
     print("This validates the portable TLS stack, not UIKit or the physical iOS runtime.")
 
 

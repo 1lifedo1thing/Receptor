@@ -46,3 +46,7 @@ python3 tests/test_pairing_crypto.py
 ```
 
 The desktop build uses the Windows .NET Framework compiler and produces `build/desktop/ReceptorDesktop.exe`. No NuGet dependencies or downloaded runtimes are used. The EXE is unsigned. Protocol tests exercise the actual server, DPAPI save/load, remembered pairing across restart, stale-session rejection, explicit reset, authenticated immutable transfers of image/text/ZIP/IPA/DEB/binary/extensionless/empty files, malformed requests and shutdown. Native tests compare the production C PBKDF2 loop with independent Python vectors. Keychain behavior, automatic reconnect, the iOS grid/image previews, Open In and installation still require physical-device testing. Transfer support does not imply that legacy iOS or an installed app can preview every format.
+
+## iOS 1.4.1 sharing update
+
+The Windows app is unchanged at 1.4.0. On the device, 1.4.1 adds Share (system activity sheet on iOS 6; a legacy action menu on iOS 4–5), Save to Photos for supported images/videos, and separate Open In app selection. Save to Photos also appears directly in image preview. Open In only lists installed apps registered for the file type. Safari profile/certificate downloads are passed through to the native installer; retry an original profile link in Safari after updating and restarting Safari. The 1.4.1 Photos/share/profile fixes still require on-device validation.
