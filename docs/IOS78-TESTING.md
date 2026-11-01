@@ -2,7 +2,7 @@
 
 This is a first test build for armv7 devices such as iPad 4, iPhone 4/4S/5/5c and other compatible 32-bit hardware. Firmware must be at least 4.0 and below 9.0. Device-specific firmware availability still applies. **iOS 7–8 behavior is not yet device-validated. arm64 Safari injection is not included.**
 
-The package still contains armv7 executables built with SDK 5.0 and a minimum iOS 4.0 deployment target. Existing 1.4.1 packages and release files remain available unchanged for iOS 4–6 users. The Windows companion remains 1.4.0 and existing pairing credentials are retained.
+The package still contains armv7 executables built with SDK 5.0 and a minimum iOS 4.0 deployment target. Existing 1.4.1 packages and release files remain available unchanged for iOS 4–6 users. The 1.6.0 companion adds optional device-to-PC transfers; existing pairing credentials are retained. See [two-way transfer tests](TRANSFER-TESTING.md).
 
 ## Runtime paths
 

@@ -5,6 +5,7 @@
 #import "RCIPAInstaller.h"
 #import "RCDEBInstaller.h"
 #import "RCCompanionViewController.h"
+#import "RCSendFileViewController.h"
 #import "RCFileArtwork.h"
 #import "RCFileSharing.h"
 #include <math.h>
@@ -329,6 +330,7 @@ static BOOL RCInstallingPackage(void) {
     [titles addObject:@"Share…"];
     if ([RCFileShareController canSaveToPhotos:name]) [titles addObject:@"Save to Photos"];
     [titles addObject:@"Open In…"];
+    [titles addObject:@"Send to PC"];
     [titles addObject:@"Delete"];
     [_actionTitles release]; _actionTitles = [titles copy];
     _fileActions = [[UIActionSheet alloc] initWithTitle:name delegate:self cancelButtonTitle:nil destructiveButtonTitle:nil otherButtonTitles:nil];
@@ -373,6 +375,10 @@ static BOOL RCInstallingPackage(void) {
     if ([action isEqualToString:@"Open In…"]) [self openSelectedFileInApp];
     else if ([action isEqualToString:@"Share…"]) [_sharing shareFile:_selectedPackage fromRect:_actionAnchor];
     else if ([action isEqualToString:@"Save to Photos"]) [RCFileShareController saveToPhotos:_selectedPackage];
+    else if ([action isEqualToString:@"Send to PC"]) {
+        RCSendFileViewController *send = [[RCSendFileViewController alloc] initWithPath:[RCDownloadsDirectory stringByAppendingPathComponent:_selectedPackage]];
+        [self.navigationController pushViewController:send animated:YES]; [send release];
+    }
     else if ([action isEqualToString:@"Delete"]) [self deleteSelectedFile];
     else if ([action isEqualToString:@"Preview"]) {
         NSString *extension = [[_selectedPackage pathExtension] lowercaseString];

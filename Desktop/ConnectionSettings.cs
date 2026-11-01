@@ -5,6 +5,26 @@ using System.Text;
 using System.Text.RegularExpressions;
 
 namespace ReceptorDesktop {
+    public sealed class ReceiveOptions {
+        public string Folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Receptor Received");
+        public bool Enabled;
+        // Separate sidecar preserves the existing six-field pairing file for older companions.
+        public static ReceiveOptions Load(string path) {
+            if (!File.Exists(path)) return new ReceiveOptions();
+            string[] fields = Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(path), null, DataProtectionScope.CurrentUser)).Split('\n');
+            if (fields.Length != 3 || fields[0] != "1" || (fields[1] != "0" && fields[1] != "1")) throw new IOException("Receive preferences are invalid.");
+            return new ReceiveOptions { Enabled = fields[1] == "1", Folder = Path.GetFullPath(Encoding.UTF8.GetString(Convert.FromBase64String(fields[2]))) };
+        }
+        public void Save(string path) {
+            byte[] bytes = Encoding.UTF8.GetBytes("1\n" + (Enabled ? "1" : "0") + "\n" + Convert.ToBase64String(Encoding.UTF8.GetBytes(Path.GetFullPath(Folder))));
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
+            string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try {
+                File.WriteAllBytes(temporary, ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser));
+                if (File.Exists(path)) File.Replace(temporary, path, null); else File.Move(temporary, path);
+            } finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+    }
     public sealed class ConnectionSettings {
         public const int ListenPort = 49176;
         public const int Iterations = 100000;

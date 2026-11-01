@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 static NSString *RCHex(const unsigned char *bytes, size_t count) {
     NSMutableString *text = [NSMutableString stringWithCapacity:count * 2];
@@ -54,6 +55,7 @@ static BOOL RCValidFile(id file) {
 - (BOOL)isCancelled;
 - (void)run:(NSDictionary *)operation;
 - (void)finish:(NSDictionary *)result;
+- (void)runUpload:(NSString *)path;
 @end
 typedef struct {
     RCCompanionClient *client;
@@ -122,9 +124,30 @@ static NSArray *RCFetchPairingInfo(RCCompanionClient *client, NSString *host) {
     return [parts count] == 3 && [[parts objectAtIndex:0] isEqualToString:@"2"] &&
         RCHexString([parts objectAtIndex:1], 32) && RCHexString([parts objectAtIndex:2], 32) ? parts : nil;
 }
+static NSString *RCBase64(NSData *data) {
+    static const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const unsigned char *bytes = [data bytes]; NSUInteger length = [data length];
+    NSMutableString *text = [NSMutableString string];
+    for (NSUInteger i = 0; i < length; i += 3) {
+        unsigned int value = (unsigned int)bytes[i] << 16;
+        if (i + 1 < length) value |= (unsigned int)bytes[i + 1] << 8;
+        if (i + 2 < length) value |= bytes[i + 2];
+        [text appendFormat:@"%c%c%c%c", alphabet[(value >> 18) & 63], alphabet[(value >> 12) & 63],
+            i + 1 < length ? alphabet[(value >> 6) & 63] : '=', i + 2 < length ? alphabet[value & 63] : '='];
+    }
+    return text;
+}
+typedef struct { RCCompanionClient *client; int descriptor; } RCUploadReader;
+static size_t RCCompanionRead(char *bytes, size_t size, size_t count, void *pointer) {
+    RCUploadReader *reader = pointer;
+    if ([reader->client isCancelled] || (size && count > SIZE_MAX / size)) return CURL_READFUNC_ABORT;
+    ssize_t length;
+    do { length = read(reader->descriptor, bytes, size * count); } while (length < 0 && errno == EINTR);
+    return length < 0 ? CURL_READFUNC_ABORT : (size_t)length;
+}
 
 @implementation RCCompanionClient
-@synthesize delegate = _delegate, busy = _busy;
+@synthesize delegate = _delegate, busy = _busy, canUpload = _canUpload;
 + (NSDictionary *)savedConnection {
     NSMutableDictionary *query = RCConnectionQuery();
     [query setObject:(id)kCFBooleanTrue forKey:(id)kSecReturnData];
@@ -192,6 +215,7 @@ static NSArray *RCFetchPairingInfo(RCCompanionClient *client, NSString *host) {
     [_salt release]; _salt = useSaved ? [[saved objectForKey:@"salt"] copy] : nil;
     [_pairingCode release]; _pairingCode = useSaved ? nil : [key copy];
     [_session release]; _session = nil;
+    _canUpload = NO;
     _busy = YES; @synchronized(self) { _cancelled = NO; }
     [NSThread detachNewThreadSelector:@selector(run:) toTarget:self withObject:[NSDictionary dictionary]];
     return YES;
@@ -201,6 +225,110 @@ static NSArray *RCFetchPairingInfo(RCCompanionClient *client, NSString *host) {
     _busy = YES; @synchronized(self) { _cancelled = NO; }
     [NSThread detachNewThreadSelector:@selector(run:) toTarget:self withObject:[NSDictionary dictionaryWithObject:file forKey:@"file"]];
     return YES;
+}
+- (BOOL)sendFileAtPath:(NSString *)path error:(NSError **)error {
+    if (_busy || !_host || !_key || !_session || !_canUpload || ![path isAbsolutePath]) {
+        if (error) *error = RCError(@"Connect to Receptor Desktop 1.6.0 or later with receiving enabled before sending a file."); return NO;
+    }
+    _busy = YES; @synchronized(self) { _cancelled = NO; }
+    [NSThread detachNewThreadSelector:@selector(runUpload:) toTarget:self withObject:[[path copy] autorelease]]; return YES;
+}
+- (void)runUpload:(NSString *)path {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSMutableDictionary *result = [NSMutableDictionary dictionaryWithObject:[NSNumber numberWithBool:YES] forKey:@"upload"];
+    NSString *failure = nil;
+    int source = -1, snapshot = -1;
+    do {
+        source = open([path fileSystemRepresentation], O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+        struct stat before, after;
+        if (source < 0 || fstat(source, &before) || !S_ISREG(before.st_mode) || before.st_size < 0 || before.st_size > 2147483647LL) {
+            failure = @"Choose a readable regular file no larger than 2 GB. Protected paths, devices and unresolved symbolic links cannot be sent."; break;
+        }
+        (void)fcntl(source, F_SETFD, FD_CLOEXEC);
+        NSString *template = [NSTemporaryDirectory() stringByAppendingPathComponent:@".receptor-send-XXXXXX"];
+        char *temporary = strdup([template fileSystemRepresentation]);
+        if (temporary) snapshot = mkstemp(temporary);
+        if (snapshot < 0) { free(temporary); failure = @"Cannot create a private upload snapshot. Check free space."; break; }
+        (void)fcntl(snapshot, F_SETFD, FD_CLOEXEC);
+        if (unlink(temporary)) { close(snapshot); snapshot = -1; free(temporary); failure = @"Could not secure the temporary upload file."; break; }
+        free(temporary); // Anonymous private fd is cleaned by close, including after a process exit.
+        CC_SHA256_CTX hash; CC_SHA256_Init(&hash);
+        unsigned char buffer[65536]; long long copied = 0;
+        for (;;) {
+            if ([self isCancelled]) { failure = @"Transfer cancelled."; break; }
+            ssize_t count = read(source, buffer, sizeof(buffer));
+            if (count < 0 && errno == EINTR) continue;
+            if (count < 0) { failure = @"Cannot read this file with Receptor's current permissions."; break; }
+            if (count == 0) break;
+            if (copied + count > before.st_size) { failure = @"The source file changed while preparing. Retry when it is no longer being written."; break; }
+            ssize_t offset = 0;
+            while (offset < count) {
+                ssize_t written = write(snapshot, buffer + offset, (size_t)(count - offset));
+                if (written < 0 && errno == EINTR) continue;
+                if (written <= 0) { failure = @"Cannot prepare the upload snapshot. Check free space."; break; }
+                offset += written;
+            }
+            if (failure) break;
+            CC_SHA256_Update(&hash, buffer, (CC_LONG)count); copied += count;
+        }
+        if (failure) break;
+        if (fstat(source, &after) || copied != before.st_size || before.st_size != after.st_size || before.st_mtime != after.st_mtime ||
+            before.st_ctime != after.st_ctime || before.st_mtimespec.tv_nsec != after.st_mtimespec.tv_nsec || before.st_ctimespec.tv_nsec != after.st_ctimespec.tv_nsec) {
+            failure = @"The source changed while preparing. Retry with a file that is no longer being written."; break;
+        }
+        close(source); source = -1;
+        if (fsync(snapshot) || lseek(snapshot, 0, SEEK_SET) < 0) { failure = @"Cannot finish preparing the upload snapshot."; break; }
+        if ([self isCancelled]) { failure = @"Transfer cancelled."; break; }
+        unsigned char digest[CC_SHA256_DIGEST_LENGTH]; CC_SHA256_Final(digest, &hash);
+        NSString *checksum = RCHex(digest, sizeof(digest));
+        NSString *encodedName = RCBase64([RCSafeFilename([path lastPathComponent]) dataUsingEncoding:NSUTF8StringEncoding]);
+        NSString *nonce = RCNonce(), *length = [NSString stringWithFormat:@"%lld", copied];
+        NSString *mac = RCMac(_key, [NSString stringWithFormat:@"PUT\n/v2/uploads\n%@\n%@\n%@\n%@\n%@", nonce, _session, length, checksum, encodedName]);
+        NSString *url = [NSString stringWithFormat:@"http://%@/v2/uploads?nonce=%@", _host, nonce];
+        struct curl_slist *headers = NULL;
+        NSArray *lines = [NSArray arrayWithObjects:[@"X-Receptor-Auth: " stringByAppendingString:mac],
+            [@"X-Receptor-Name: " stringByAppendingString:encodedName], [@"X-Receptor-SHA256: " stringByAppendingString:checksum],
+            @"Content-Type: application/octet-stream", @"Expect:", nil];
+        for (NSString *line in lines) {
+            struct curl_slist *next = curl_slist_append(headers, [line UTF8String]);
+            if (!next) { failure = @"Cannot allocate upload headers."; break; } headers = next;
+        }
+        if (failure) { curl_slist_free_all(headers); break; }
+        CURL *curl = curl_easy_init();
+        if (!curl) { curl_slist_free_all(headers); failure = @"Cannot initialize upload transport."; break; }
+        RCCompanionContext context; memset(&context, 0, sizeof(context));
+        context.client = self; context.descriptor = -1; context.body = [NSMutableData data]; context.limit = 2048; CC_SHA256_Init(&context.hash);
+        RCUploadReader reader = {self, snapshot};
+        curl_easy_setopt(curl, CURLOPT_URL, [url UTF8String]); curl_easy_setopt(curl, CURLOPT_PROXY, "");
+        curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "http"); curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
+        curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L); curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, (curl_off_t)copied);
+        curl_easy_setopt(curl, CURLOPT_READFUNCTION, RCCompanionRead); curl_easy_setopt(curl, CURLOPT_READDATA, &reader);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L); curl_easy_setopt(curl, CURLOPT_TIMEOUT, 1800L);
+        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L); curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, RCCompanionWrite); curl_easy_setopt(curl, CURLOPT_WRITEDATA, &context);
+        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, RCCompanionHeader); curl_easy_setopt(curl, CURLOPT_HEADERDATA, &context);
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L); curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, RCCompanionProgress); curl_easy_setopt(curl, CURLOPT_XFERINFODATA, self);
+        CURLcode code = curl_easy_perform(curl); long status = 0; curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+        unsigned char receiptHash[CC_SHA256_DIGEST_LENGTH]; CC_SHA256_Final(receiptHash, &context.hash);
+        NSString *expected = RCMac(_key, [NSString stringWithFormat:@"response\n%@\n%@\n%@", nonce, RCHex(receiptHash, sizeof(receiptHash)), _session]);
+        if ([self isCancelled]) failure = @"Transfer cancelled.";
+        else if (status == 403) failure = @"The PC rejected this upload. Enable receiving in the updated companion and reconnect.";
+        else if (status == 409) failure = @"The PC is busy or this session expired. Reconnect and retry.";
+        else if (status == 429) failure = @"The PC has received 32 files this session. Stop and start sharing, then reconnect.";
+        else if (code != CURLE_OK || status != 201) failure = @"The PC did not confirm delivery. Check the connection and receive folder. A fully delivered copy may already exist on the PC.";
+        else if (context.badHeader || !RCEqual(context.auth, expected)) failure = @"The PC receipt failed authentication. Delivery is not confirmed.";
+        else {
+            NSString *saved = [[[NSString alloc] initWithData:context.body encoding:NSUTF8StringEncoding] autorelease];
+            if (![saved length] || [saved rangeOfCharacterFromSet:[NSCharacterSet controlCharacterSet]].location != NSNotFound ||
+                [saved rangeOfString:@"/"].location != NSNotFound || [saved rangeOfString:@"\\"].location != NSNotFound) failure = @"The PC returned an invalid delivery receipt.";
+            else [result setObject:saved forKey:@"uploaded"];
+        }
+        [context.auth release]; curl_easy_cleanup(curl); curl_slist_free_all(headers);
+    } while (0);
+    if (source >= 0) close(source); if (snapshot >= 0) close(snapshot);
+    if (failure) [result setObject:failure forKey:@"error"];
+    [self performSelectorOnMainThread:@selector(finish:) withObject:result waitUntilDone:NO]; [pool drain];
 }
 - (void)run:(NSDictionary *)operation {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
@@ -313,7 +441,11 @@ static NSArray *RCFetchPairingInfo(RCCompanionClient *client, NSString *host) {
         id files = [plist isKindOfClass:[NSDictionary class]] ? [plist objectForKey:@"files"] : nil;
         BOOL valid = [version isKindOfClass:[NSNumber class]] && [version intValue] == 2 && [files isKindOfClass:[NSArray class]] && [files count] <= 32;
         if (valid) for (id item in files) if (!RCValidFile(item)) { valid = NO; break; }
-        if (valid) [result setObject:files forKey:@"files"];
+        if (valid) {
+            [result setObject:files forKey:@"files"];
+            id accepts = [plist objectForKey:@"accepts_uploads"];
+            [result setObject:[NSNumber numberWithBool:[accepts isKindOfClass:[NSNumber class]] && [accepts boolValue]] forKey:@"canUpload"];
+        }
         else failure = @"The desktop returned an invalid package list. Update both apps and reconnect.";
     }
     if (failure) [result setObject:failure forKey:@"error"];
@@ -324,12 +456,15 @@ static NSArray *RCFetchPairingInfo(RCCompanionClient *client, NSString *host) {
     _busy = NO;
     if ([self isCancelled]) {
         if ([result objectForKey:@"saved"]) [[NSNotificationCenter defaultCenter] postNotificationName:RCDownloadsChangedNotification object:nil];
-        result = [NSDictionary dictionaryWithObject:@"Transfer cancelled. Any file already fully received is available in Files." forKey:@"error"];
+        result = [NSDictionary dictionaryWithObject:[result objectForKey:@"upload"] ? @"Transfer cancelled. A file already delivered may remain on your PC." : @"Transfer cancelled. Any file already fully received is available in Files." forKey:@"error"];
     }
-    else if ([result objectForKey:@"files"] && ![self saveConnection]) {
-        NSMutableDictionary *updated = [[result mutableCopy] autorelease];
-        [updated setObject:@"Connected, but iOS could not save the pairing in Keychain. Unlock the device and try connecting again." forKey:@"saveWarning"];
-        result = updated;
+    else if ([result objectForKey:@"files"]) {
+        _canUpload = [[result objectForKey:@"canUpload"] boolValue];
+        if (![self saveConnection]) {
+            NSMutableDictionary *updated = [[result mutableCopy] autorelease];
+            [updated setObject:@"Connected, but iOS could not save the pairing in Keychain. Unlock the device and try connecting again." forKey:@"saveWarning"];
+            result = updated;
+        }
     }
     [_delegate companion:self finished:result];
 }

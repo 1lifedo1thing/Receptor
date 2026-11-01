@@ -58,11 +58,17 @@ namespace ReceptorDesktop {
         private readonly string staging = Path.Combine(Path.GetTempPath(), "Receptor-" + Guid.NewGuid().ToString("N"));
         private volatile bool stopped;
         private int pendingAdds;
+        private readonly string receiveFolder;
+        private readonly SemaphoreSlim receiving = new SemaphoreSlim(1, 1);
+        private int receivedCount;
         public event Action<string> Status;
+        public event Action<string> FileReceived;
         public string Code { get { return identity.Code; } }
         public int Port { get { return ((IPEndPoint)listener.LocalEndpoint).Port; } }
-        public CompanionServer(IPAddress address, int port, ConnectionSettings settings) {
+        public CompanionServer(IPAddress address, int port, ConnectionSettings settings) : this(address, port, settings, null) { }
+        public CompanionServer(IPAddress address, int port, ConnectionSettings settings, ReceiveOptions incoming) {
             identity = settings; key = settings.Key;
+            receiveFolder = incoming != null && incoming.Enabled ? Path.GetFullPath(incoming.Folder) : null;
             byte[] random = new byte[16];
             using (RandomNumberGenerator rng = RandomNumberGenerator.Create()) rng.GetBytes(random);
             session = Hex(random);
@@ -121,7 +127,9 @@ namespace ReceptorDesktop {
                         Field(xml, "size", "integer", item.Size.ToString(System.Globalization.CultureInfo.InvariantCulture));
                         Field(xml, "sha256", "string", item.Digest); xml.WriteEndElement();
                     }
-                    xml.WriteEndElement(); xml.WriteEndElement(); xml.WriteEndElement(); xml.WriteEndDocument();
+                    xml.WriteEndElement();
+                    xml.WriteElementString("key", "accepts_uploads"); xml.WriteStartElement(receiveFolder != null ? "true" : "false"); xml.WriteEndElement();
+                    xml.WriteEndElement(); xml.WriteEndElement(); xml.WriteEndDocument();
                 }
                 return buffer.ToArray();
             }
@@ -140,7 +148,7 @@ namespace ReceptorDesktop {
             throw new IOException("Request too large.");
         }
         private static void Header(Stream stream, int code, long size, string auth, string contentType) {
-            string text = "HTTP/1.1 " + code + (code == 200 ? " OK" : " Rejected") + "\r\nConnection: close\r\nCache-Control: no-store\r\nContent-Type: " + contentType +
+            string text = "HTTP/1.1 " + code + (code == 200 ? " OK" : code == 201 ? " Created" : " Rejected") + "\r\nConnection: close\r\nCache-Control: no-store\r\nContent-Type: " + contentType +
                 "\r\nContent-Length: " + size + "\r\n" + (auth == null ? "" : "X-Receptor-Auth: " + auth + "\r\n") + "\r\n";
             byte[] bytes = Encoding.ASCII.GetBytes(text); stream.Write(bytes, 0, bytes.Length);
         }
@@ -158,6 +166,8 @@ namespace ReceptorDesktop {
                         if (headers.ContainsKey(name)) throw new IOException("Duplicate header.");
                         headers.Add(name, line.Substring(colon + 1).Trim());
                     }
+                    Match upload = Regex.Match(request, @"^PUT /v2/uploads\?nonce=([a-f0-9]{32}) HTTP/1\.[01]$");
+                    if (upload.Success) { ReceiveUpload(client, stream, headers, upload.Groups[1].Value); return; }
                     Match match = Regex.Match(request, @"^GET (/v2/pairing|/v2/manifest|/v2/files/[a-f0-9]{32})\?nonce=([a-f0-9]{32}) HTTP/1\.[01]$");
                     string auth;
                     if (!match.Success || headers.ContainsKey("Transfer-Encoding") ||
@@ -195,6 +205,85 @@ namespace ReceptorDesktop {
                 }
             } catch (IOException) { } catch (SocketException) { } catch (ObjectDisposedException) { }
             finally { client.Close(); lock (gate) clients.Remove(client); }
+        }
+        private static string IncomingName(string encoded) {
+            if (encoded == null || encoded.Length > 1400 || !Regex.IsMatch(encoded, @"^[A-Za-z0-9+/]+={0,2}$")) return null;
+            string name;
+            try { name = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(encoded)); }
+            catch (FormatException) { return null; } catch (DecoderFallbackException) { return null; }
+            if (name.Length == 0 || name.Length > 255 || name == "." || name == ".." || name.IndexOfAny(new char[] { '/', '\\' }) >= 0) return null;
+            foreach (char c in name) if (Char.IsControl(c)) return null;
+            foreach (char c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '_');
+            name = name.TrimEnd(' ', '.').TrimStart(' ');
+            if (name.Length == 0) name = "File";
+            string device = name.Split('.')[0].TrimEnd(' ');
+            if (Regex.IsMatch(device, @"^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])$", RegexOptions.IgnoreCase)) name = "_" + name;
+            if (name.Length > 180) {
+                string extension = Path.GetExtension(name); if (extension.Length > 24) extension = "";
+                int count = 180 - extension.Length;
+                if (Char.IsHighSurrogate(name[count - 1])) count--;
+                name = name.Substring(0, count) + extension;
+            }
+            return name;
+        }
+        private void ReceiveUpload(TcpClient client, Stream stream, Dictionary<string,string> headers, string nonce) {
+            string lengthText, digest, encoded, auth;
+            long length;
+            if (receiveFolder == null) { Header(stream, 403, 0, null, "text/plain"); return; }
+            if (headers.ContainsKey("Transfer-Encoding") || !headers.TryGetValue("Content-Length", out lengthText) ||
+                !Regex.IsMatch(lengthText, @"^(0|[1-9][0-9]{0,9})$") || !Int64.TryParse(lengthText, out length) || length > 2147483647L ||
+                !headers.TryGetValue("X-Receptor-SHA256", out digest) || !Regex.IsMatch(digest, @"^[a-f0-9]{64}$") ||
+                !headers.TryGetValue("X-Receptor-Name", out encoded) || !headers.TryGetValue("X-Receptor-Auth", out auth) ||
+                !Equal(Mac(key, "PUT\n/v2/uploads\n" + nonce + "\n" + session + "\n" + lengthText + "\n" + digest + "\n" + encoded), auth)) {
+                Header(stream, 403, 0, null, "text/plain"); return;
+            }
+            string name = IncomingName(encoded);
+            if (name == null) { Header(stream, 400, 0, null, "text/plain"); return; }
+            lock (gate) {
+                if (nonces.Count >= 4096 || !nonces.Add(nonce)) { Header(stream, 409, 0, null, "text/plain"); return; }
+                if (receivedCount >= 32) { Header(stream, 429, 0, null, "text/plain"); return; }
+            }
+            if (!receiving.Wait(0)) { Header(stream, 409, 0, null, "text/plain"); return; }
+            string partial = null;
+            try {
+                client.ReceiveTimeout = 30000;
+                Directory.CreateDirectory(receiveFolder);
+                partial = Path.Combine(receiveFolder, ".receptor-receive-" + Guid.NewGuid().ToString("N") + ".part");
+                using (FileStream output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                using (SHA256 sha = SHA256.Create()) {
+                    byte[] buffer = new byte[65536]; long remaining = length;
+                    while (remaining > 0) {
+                        int count = stream.Read(buffer, 0, (int)Math.Min(buffer.Length, remaining));
+                        if (count <= 0) throw new IOException("Transfer ended before the declared file length.");
+                        output.Write(buffer, 0, count); sha.TransformBlock(buffer, 0, count, buffer, 0); remaining -= count;
+                    }
+                    sha.TransformFinalBlock(new byte[0], 0, 0);
+                    if (!Equal(Hex(sha.Hash), digest)) { Header(stream, 422, 0, null, "text/plain"); return; }
+                    output.Flush(true);
+                }
+                string saved = null;
+                lock (gate) {
+                    if (stopped) return;
+                    for (int i = 0; i < 10000; i++) {
+                        string candidate = i == 0 ? name : Path.GetFileNameWithoutExtension(name) + " (" + i + ")" + Path.GetExtension(name);
+                        string destination = Path.Combine(receiveFolder, candidate);
+                        try { File.Move(partial, destination); saved = candidate; partial = null; break; }
+                        catch (IOException) { if (!File.Exists(destination)) throw; }
+                    }
+                    if (saved == null) throw new IOException("Could not choose an unused received filename.");
+                    receivedCount++;
+                }
+                byte[] receipt = Encoding.UTF8.GetBytes(saved);
+                Header(stream, 201, receipt.Length, Mac(key, "response\n" + nonce + "\n" + Hash(receipt) + "\n" + session), "text/plain; charset=utf-8");
+                stream.Write(receipt, 0, receipt.Length);
+                Notify("Received " + saved + " from your device.");
+                Action<string> callback = FileReceived; if (callback != null) callback(saved);
+            } catch (IOException) { Notify("Incoming transfer interrupted. Incomplete data was discarded; a fully received copy may already be in the folder."); }
+            catch (UnauthorizedAccessException) { Notify("Could not write to the receive folder. Stop sharing and choose a writable folder."); }
+            finally {
+                if (partial != null) try { File.Delete(partial); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                receiving.Release();
+            }
         }
         private void Notify(string text) { Action<string> handler = Status; if (handler != null) handler(text); }
         private void TryDeleteDirectory() { try { Directory.Delete(staging); } catch (IOException) { } catch (UnauthorizedAccessException) { } }

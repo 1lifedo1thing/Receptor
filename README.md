@@ -18,9 +18,19 @@ GitHub Pages enforces HTTPS. Some legacy Cydia clients may not support its TLS/c
 
 Requires a rootful jailbreak and Cydia Substrate. The jailbreak must permit access to `/var/mobile/Media/Receptor/`. No global sandbox patch or certificate-validation bypass is installed. A compatible AppSync setup may be needed for IPAs that are not validly signed for the device; it is not installed automatically.
 
-## Experimental iOS 7–8 support (1.5.0)
+## Device-to-PC transfers and filesystem browser (1.6.0 beta)
 
-The first 32-bit iOS 7–8 test build is available in the [1.5.0 beta release](https://github.com/jajaengland/Receptor/releases/tag/v1.5.0-beta1) and Cydia source. Existing 1.4.1 files remain unchanged and available for iOS 4–6. **No iOS 7/8 physical-device result is claimed yet, and arm64 Safari injection is not included.** The Windows companion stays at 1.4.0; pairing is unchanged.
+Upgrade Receptor in Cydia and download **ReceptorDesktop.exe 1.6.0** from the [1.6.0 beta release](https://github.com/jajaengland/Receptor/releases/tag/v1.6.0-beta1). Saved pairing is retained. On Windows, stop sharing if already running, enable **Receive files sent from the device**, choose a destination folder, then start sharing. In Receptor’s **Files** tab, hold a file or tap **••• → Send to PC**, then tap **Send to PC** on the confirmation screen. Use **Manage pairing** there if this PC has not been paired. Keep both apps open until delivery is verified. **Open folder** in the Windows companion shows received files. It does not automatically open or install them.
+
+The separate **Filesystem** tab starts at `/`, includes hidden entries and navigates folders and symbolic links. Select a regular file for **Preview** (Quick Look) or **Send to PC**. This tab is read-only: there are no system-file delete, move, edit or install actions. It uses the app’s existing permissions; protected paths can be unavailable, and special files such as devices/sockets are excluded. The root DEB helper is unchanged and is not used for browsing or exporting. The existing Files tab retains its grid/list, download management, sharing and confirmed installation actions.
+
+Sending creates an anonymous private snapshot on the device, requiring free space approximately equal to the selected file’s size. Files changing during preparation are rejected. The PC verifies the declared length and SHA-256, publishes without overwriting existing files, and signs its receipt. Cancelling or leaving the sender stops the transfer and removes incomplete snapshots; a fully delivered copy may remain if its receipt was interrupted. Receiving is opt-in and its folder/preference is saved encrypted for the current Windows user. Up to 32 incoming files per sharing session, each at most 2,147,483,647 bytes. Restart sharing for a new session. Authentication does not encrypt filenames or contents: use a trusted private LAN. The PC cannot remotely browse the device.
+
+The armv7 SDK 5.0 build and Windows integration tests pass. The new iOS tab/preview/send flow needs physical-device testing. **iOS 7–8 support remains experimental; arm64 Safari is not included.** See [new-feature test steps](docs/TRANSFER-TESTING.md).
+
+## Experimental iOS 7–8 support (introduced in 1.5.0)
+
+The first 32-bit iOS 7–8 test build was published in the [1.5.0 beta release](https://github.com/jajaengland/Receptor/releases/tag/v1.5.0-beta1); these adapters remain in 1.6.0. Existing 1.4.1 files remain unchanged and available for iOS 4–6. **No iOS 7/8 physical-device result is claimed yet, and arm64 Safari injection is not included.** Pairing is unchanged.
 
 iOS 7 retains the guarded legacy WebView adapter. iOS 8 has a new guarded WKWebView navigation delegate, forwarding Safari's optional callbacks and authentication handling while leaving profile/certificate and native Passbook responses to Safari. On iOS 7–8, choose **Open Receptor** at the Safari prompt and confirm **Download** inside the app. This avoids relying on Safari's storage sandbox/background lifetime. The handoff carries the HTTP(S) GET URL only, with fresh in-app consent; private Safari cookies, headers, POST bodies, one-time responses and blob URLs are not replayed. Start with public file URLs.
 
@@ -36,13 +46,13 @@ Use **Save to Photos** from a file's actions or the image preview's bottom toolb
 
 **Share…** is separate from **Open In…**. On iOS 6 and later it presents the public system activity sheet, in a popover on iPad. On iOS 4–5 it presents a legacy menu with Save to Photos for supported media and Open In. Open In is an app picker: if no installed app registers support for the file type, an explanatory message appears. The image preview includes direct Save to Photos and Open In buttons as well as Share.
 
-This is an iOS-side update; the Windows companion remains version 1.4.0 and saved pairing is unchanged.
+The 1.4.1 update only changed iOS; Windows remained at 1.4.0 until the 1.6.0 two-way transfer update.
 
 ## Browse, preview and share files (1.4.0)
 
 The file browser now opens in an adaptive grid inspired by the iOS Files app, with image thumbnails, file-type icons and filename search. Use **Grid / List** to switch layouts; Receptor remembers your choice. Tap a supported image for a full-screen preview with pinch/double-tap zoom. Documents use Quick Look where supported. Hold a file, tap its **•••** button (grid) or detail button (list), then choose **Open In…** to send it to a compatible installed app. The image viewer has Share, Save to Photos and Open In controls. Package menus retain their explicit Install action. Use Edit and tap a grid tile, or swipe a list row, to delete with confirmation.
 
-The grid uses reusable table rows on iOS 4–6. Image thumbnails are generated off the main thread with a bounded cache. Previews use an orientation-correct image capped at 1600 pixels; images larger than 25 megapixels or unsupported by legacy ImageIO show a fallback message and remain available to Open In. Animated images preview their first frame. This is a Files-inspired browser for the Receptor download directory, rather than the full iOS 11 Files app or a whole-filesystem explorer.
+The grid uses reusable table rows on iOS 4–6. Image thumbnails are generated off the main thread with a bounded cache. Previews use an orientation-correct image capped at 1600 pixels; images larger than 25 megapixels or unsupported by legacy ImageIO show a fallback message and remain available to Open In. Animated images preview their first frame. This Files-inspired grid covers the Receptor download directory; 1.6.0 adds a separate read-only filesystem tab.
 
 ## Send any file from Windows (1.4.0)
 

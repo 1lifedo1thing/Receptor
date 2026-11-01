@@ -1,0 +1,15 @@
+# Receptor 1.6.0 device test checklist
+
+Host checks do not execute the iOS UI. Record exact hardware, iOS, jailbreak and versions. iOS 7–8 support remains experimental and arm64 Safari is excluded.
+
+1. Upgrade Receptor and Receptor Desktop to 1.6.0. Open both. Verify existing saved pairing works without re-entering the code. Verify pairing a new PC through Manage pairing in the sender also works.
+2. On Windows, stop sharing, enable Receive files sent from the device, choose an empty test folder, and start sharing. In the Files tab, hold a test image → Send to PC → Send to PC. Wait for Delivery verified, then compare its SHA-256 with the original. Repeat with text, an archive, arbitrary binary and an empty file.
+3. Send the same filename again; the original must be preserved and the new copy numbered. Verify the filename reported on the device matches the file in Open folder. Received files must not open or execute automatically.
+4. Stop sharing, disable receiving, restart sharing. A fresh attempt should explain that receiving is disabled. Existing PC-to-device transfers must still work with either new or older v2 companions.
+5. Start a large upload. Cancel it, leave the screen, background Receptor and interrupt Wi-Fi in separate attempts. Incomplete PC partials should disappear; a copy already fully published can remain. Retry afterward. Test Stop sharing during an upload and restart it. No receipt means delivery is uncertain: inspect the receive folder before retrying.
+6. Open the separate Filesystem tab. Confirm `/` is listed, hidden files are included, folders navigate with Back, and Refresh works. For a folder with more than 500 entries, Load 500 more must retain existing entries. Select a directory symlink to an ancestor; navigation should return to that ancestor rather than loop indefinitely. Unreadable/broken links should show an error.
+7. Select a readable regular test image/document outside the download directory. Preview through Quick Look, return and send it to the PC. Confirm original bytes and location remain unchanged. Test a protected directory and a special file: permission errors should be visible and devices/sockets must not be opened or sent. This browser grants no new root access and offers no delete/edit/install action.
+8. Switch tabs, rotate iPad, navigate back during preparation and reopen the sender. Confirm controls remain usable and the idle timer is restored after success/failure/cancellation. Keep enough free device space for a snapshot of the exported file.
+9. Verify the existing Files grid/list, image preview, sharing, downloads and explicit package installation controls remain reachable. Safari’s Open Receptor action should select Files. Do not install untrusted packages as test fixtures.
+
+Only share test results with non-sensitive filenames. Do not post real pairing codes, screenshots containing them, private filesystem contents, credentials or download links.

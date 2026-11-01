@@ -5,13 +5,14 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Diagnostics;
 using System.Threading;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Receptor Desktop")]
 [assembly: AssemblyProduct("Receptor Desktop")]
-[assembly: AssemblyVersion("1.4.0.0")]
-[assembly: AssemblyFileVersion("1.4.0.0")]
+[assembly: AssemblyVersion("1.6.0.0")]
+[assembly: AssemblyFileVersion("1.6.0.0")]
 
 namespace ReceptorDesktop {
     static class Program {
@@ -29,17 +30,22 @@ namespace ReceptorDesktop {
         readonly TextBox code = new TextBox { ReadOnly = true, Dock = DockStyle.Fill };
         readonly ListBox files = new ListBox { Dock = DockStyle.Fill, HorizontalScrollbar = true };
         readonly Label status = new Label { Text = "Choose your Wi-Fi address and start sharing.", AutoSize = true, Dock = DockStyle.Fill };
+        readonly CheckBox accept = new CheckBox { Text = "Receive files sent from the device", AutoSize = true };
+        readonly TextBox receivePath = new TextBox { ReadOnly = true, Dock = DockStyle.Fill };
+        readonly Button chooseFolder = new Button { Text = "Choose folder…", AutoSize = true };
+        readonly Button openFolder = new Button { Text = "Open folder", AutoSize = true };
+        ReceiveOptions incoming;
         CompanionServer server;
         ConnectionSettings settings;
         readonly string settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Receptor", "pairing-v2.dat");
         bool adding;
         public CompanionForm() {
-            Text = "Receptor Desktop 1.4.0"; ClientSize = new Size(650, 480); MinimumSize = new Size(550, 440);
+            Text = "Receptor Desktop 1.6.0"; ClientSize = new Size(700, 620); MinimumSize = new Size(620, 560);
             Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterScreen;
-            TableLayoutPanel layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 2, RowCount = 9 };
+            TableLayoutPanel layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 2, RowCount = 10 };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130)); layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            for (int i = 0; i < 9; i++) layout.RowStyles.Add(new RowStyle(i == 7 ? SizeType.Percent : SizeType.AutoSize, i == 7 ? 100 : 0));
-            Label intro = new Label { Text = "Send files from this PC to Receptor 1.4.0 or later.\nPair once; your connection is remembered on both devices.", AutoSize = true, Margin = new Padding(0,0,0,14) };
+            for (int i = 0; i < 10; i++) layout.RowStyles.Add(new RowStyle(i == 8 ? SizeType.Percent : SizeType.AutoSize, i == 8 ? 100 : 0));
+            Label intro = new Label { Text = "Transfer files both ways with Receptor 1.6.0 or later.\nPair once; your connection is remembered on both devices.", AutoSize = true, Margin = new Padding(0,0,0,14) };
             layout.Controls.Add(intro,0,0); layout.SetColumnSpan(intro,2);
             layout.Controls.Add(new Label { Text = "PC address", AutoSize = true },0,1); layout.Controls.Add(addresses,1,1);
             FlowLayoutPanel actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
@@ -48,8 +54,15 @@ namespace ReceptorDesktop {
             layout.Controls.Add(new Label { Text = "Pairing code", AutoSize = true },0,4); layout.Controls.Add(code,1,4);
             Label instruction = new Label { Text = "In Receptor, enter the address and short code once. It reconnects next time.\nTransfers use authenticated local HTTP; file contents are not encrypted.\nStop sharing pauses access. Reset pairing revokes remembered devices.", AutoSize = true, Margin = new Padding(0,10,0,10) };
             layout.Controls.Add(instruction,0,5); layout.SetColumnSpan(instruction,2);
-            layout.Controls.Add(add,0,6); layout.Controls.Add(files,0,7); layout.SetColumnSpan(files,2);
-            status.Margin = new Padding(0,10,0,0); layout.Controls.Add(status,0,8); layout.SetColumnSpan(status,2);
+            TableLayoutPanel receiver = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2 };
+            receiver.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            receiver.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); receiver.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            receiver.Controls.Add(accept,0,0); receiver.SetColumnSpan(accept,3);
+            receiver.Controls.Add(receivePath,0,1); receiver.Controls.Add(chooseFolder,1,1); receiver.Controls.Add(openFolder,2,1);
+            layout.Controls.Add(receiver,0,6); layout.SetColumnSpan(receiver,2);
+            layout.Controls.Add(add,0,7); layout.Controls.Add(files,0,8); layout.SetColumnSpan(files,2);
+            status.MaximumSize = new Size(640,0); status.MinimumSize = new Size(0,40);
+            status.Margin = new Padding(0,10,0,0); layout.Controls.Add(status,0,9); layout.SetColumnSpan(status,2);
             Controls.Add(layout);
             foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces()) {
                 if (nic.OperationalStatus != OperationalStatus.Up || nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
@@ -59,6 +72,9 @@ namespace ReceptorDesktop {
             }
             try { settings = ConnectionSettings.Load(settingsPath); }
             catch (Exception) { status.Text = "Saved pairing could not be opened. Use Reset pairing to create a new code."; }
+            try { incoming = ReceiveOptions.Load(settingsPath + ".receive"); }
+            catch (Exception) { incoming = new ReceiveOptions(); status.Text = "Receive preferences were reset; choose a folder and enable receiving before starting sharing."; }
+            accept.Checked = incoming.Enabled; receivePath.Text = incoming.Folder;
             if (addresses.Items.Count > 0) {
                 addresses.SelectedIndex = 0;
                 if (settings != null) for (int i = 0; i < addresses.Items.Count; i++)
@@ -66,6 +82,15 @@ namespace ReceptorDesktop {
             }
             else { start.Enabled = false; status.Text = "Connect to a private Wi-Fi network, then reopen Receptor Desktop."; }
             start.Click += delegate { Toggle(); }; add.Click += delegate { AddFiles(); }; reset.Click += delegate { ResetPairing(); };
+            chooseFolder.Click += delegate {
+                using (FolderBrowserDialog dialog = new FolderBrowserDialog { Description = "Choose where files from your device are saved", SelectedPath = incoming.Folder }) {
+                    if (dialog.ShowDialog(this) == DialogResult.OK) { incoming.Folder = dialog.SelectedPath; receivePath.Text = incoming.Folder; }
+                }
+            };
+            openFolder.Click += delegate {
+                try { Directory.CreateDirectory(incoming.Folder); Process.Start(new ProcessStartInfo(incoming.Folder) { UseShellExecute = true }); }
+                catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not open receive folder"); }
+            };
             Shown += delegate { if (settings != null && settings.AutoStart && addresses.Items.Count > 0) BeginInvoke((Action)Toggle); };
             FormClosing += delegate { if (server != null) { server.Dispose(); server = null; } };
         }
@@ -80,7 +105,7 @@ namespace ReceptorDesktop {
             if (server != null) {
                 CompanionServer previous = server; server = null; previous.Dispose();
                 endpoint.Clear(); code.Clear(); files.Items.Clear();
-                start.Text = "Start sharing"; addresses.Enabled = true; add.Enabled = false; reset.Enabled = true;
+                start.Text = "Start sharing"; addresses.Enabled = true; add.Enabled = false; reset.Enabled = true; accept.Enabled = chooseFolder.Enabled = true;
                 settings.AutoStart = false;
                 try { settings.Save(settingsPath); } catch (Exception) { status.Text = "Sharing stopped, but the startup preference could not be saved."; return; }
                 status.Text = "Sharing paused. Your saved pairing will work when you start sharing again."; return;
@@ -90,11 +115,15 @@ namespace ReceptorDesktop {
                 if (ip == null) throw new IOException("Connect to Wi-Fi and reopen Receptor Desktop.");
                 if (settings == null) throw new IOException("Use Reset pairing to replace unreadable saved settings.");
                 settings.Address = ip.ToString(); settings.AutoStart = true; settings.Save(settingsPath);
-                server = new CompanionServer(ip, ConnectionSettings.ListenPort, settings); server.Status += SetStatus;
+                incoming.Enabled = accept.Checked; incoming.Save(settingsPath + ".receive");
+                server = new CompanionServer(ip, ConnectionSettings.ListenPort, settings, incoming); server.Status += SetStatus;
+                server.FileReceived += delegate(string name) {
+                    if (!IsDisposed && IsHandleCreated) try { BeginInvoke((Action)delegate { files.Items.Add("Received → " + name); }); } catch (InvalidOperationException) { }
+                };
                 endpoint.Text = ip + ":" + server.Port;
                 string k = server.Code; code.Text = k.Substring(0,4)+"-"+k.Substring(4,4);
-                addresses.Enabled = false; start.Text = "Stop sharing"; add.Enabled = true; reset.Enabled = false;
-                status.Text = "Add files, then connect in Receptor. If Windows asks, allow access on private networks.";
+                addresses.Enabled = false; start.Text = "Stop sharing"; add.Enabled = true; reset.Enabled = false; accept.Enabled = chooseFolder.Enabled = false;
+                status.Text = incoming.Enabled ? "Ready both ways. Add PC files, or choose Send to PC on your device. Allow private-network firewall access if asked." : "PC files can be shared. To receive device files, stop sharing and enable Receive files sent from the device.";
             } catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not start sharing", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
         void ResetPairing() {
