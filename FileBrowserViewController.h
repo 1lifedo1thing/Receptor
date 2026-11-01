@@ -1,7 +1,8 @@
 #import <UIKit/UIKit.h>
 #import <QuickLook/QuickLook.h>
 
-@interface FileBrowserViewController : UITableViewController <QLPreviewControllerDataSource, UIDocumentInteractionControllerDelegate, UIActionSheetDelegate, UIAlertViewDelegate> {
+@interface FileBrowserViewController : UITableViewController <QLPreviewControllerDataSource, UIDocumentInteractionControllerDelegate, UIActionSheetDelegate, UIAlertViewDelegate, UISearchBarDelegate> {
+    NSArray *_allFiles;
     NSArray *_files;
     NSArray *_activeDownloads;
     NSArray *_previewURLs;
@@ -12,5 +13,15 @@
     UIAlertView *_installPrompt;
     UIAlertView *_URLPrompt;
     UITextField *_URLField;
+    UISearchBar *_searchBar;
+    UISegmentedControl *_layoutControl;
+    NSCache *_thumbnailCache;
+    NSOperationQueue *_thumbnailQueue;
+    NSMutableSet *_thumbnailPending;
+    NSArray *_actionTitles;
+    UIAlertView *_deletePrompt;
+    CGRect _actionAnchor;
+    BOOL _grid;
+    NSUInteger _columns;
 }
 @end

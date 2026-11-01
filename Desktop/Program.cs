@@ -10,8 +10,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Receptor Desktop")]
 [assembly: AssemblyProduct("Receptor Desktop")]
-[assembly: AssemblyVersion("1.3.1.0")]
-[assembly: AssemblyFileVersion("1.3.1.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
+[assembly: AssemblyFileVersion("1.4.0.0")]
 
 namespace ReceptorDesktop {
     static class Program {
@@ -23,7 +23,7 @@ namespace ReceptorDesktop {
     sealed class CompanionForm : Form {
         readonly ComboBox addresses = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
         readonly Button start = new Button { Text = "Start sharing", AutoSize = true };
-        readonly Button add = new Button { Text = "Add DEBs…", AutoSize = true, Enabled = false };
+        readonly Button add = new Button { Text = "Add files…", AutoSize = true, Enabled = false };
         readonly Button reset = new Button { Text = "Reset pairing", AutoSize = true };
         readonly TextBox endpoint = new TextBox { ReadOnly = true, Dock = DockStyle.Fill };
         readonly TextBox code = new TextBox { ReadOnly = true, Dock = DockStyle.Fill };
@@ -34,12 +34,12 @@ namespace ReceptorDesktop {
         readonly string settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Receptor", "pairing-v2.dat");
         bool adding;
         public CompanionForm() {
-            Text = "Receptor Desktop 1.3.1"; ClientSize = new Size(650, 480); MinimumSize = new Size(550, 440);
+            Text = "Receptor Desktop 1.4.0"; ClientSize = new Size(650, 480); MinimumSize = new Size(550, 440);
             Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterScreen;
             TableLayoutPanel layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 2, RowCount = 9 };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130)); layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             for (int i = 0; i < 9; i++) layout.RowStyles.Add(new RowStyle(i == 7 ? SizeType.Percent : SizeType.AutoSize, i == 7 ? 100 : 0));
-            Label intro = new Label { Text = "Send DEBs from this PC to Receptor 1.3.1 or later.\nPair once; your connection is remembered on both devices.", AutoSize = true, Margin = new Padding(0,0,0,14) };
+            Label intro = new Label { Text = "Send files from this PC to Receptor 1.4.0 or later.\nPair once; your connection is remembered on both devices.", AutoSize = true, Margin = new Padding(0,0,0,14) };
             layout.Controls.Add(intro,0,0); layout.SetColumnSpan(intro,2);
             layout.Controls.Add(new Label { Text = "PC address", AutoSize = true },0,1); layout.Controls.Add(addresses,1,1);
             FlowLayoutPanel actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
@@ -94,7 +94,7 @@ namespace ReceptorDesktop {
                 endpoint.Text = ip + ":" + server.Port;
                 string k = server.Code; code.Text = k.Substring(0,4)+"-"+k.Substring(4,4);
                 addresses.Enabled = false; start.Text = "Stop sharing"; add.Enabled = true; reset.Enabled = false;
-                status.Text = "Add DEBs, then connect in Receptor. If Windows asks, allow access on private networks.";
+                status.Text = "Add files, then connect in Receptor. If Windows asks, allow access on private networks.";
             } catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not start sharing", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
         void ResetPairing() {
@@ -108,17 +108,17 @@ namespace ReceptorDesktop {
         }
         void AddFiles() {
             if (server == null || adding) return;
-            using (OpenFileDialog dialog = new OpenFileDialog { Filter = "Debian packages (*.deb)|*.deb", Multiselect = true, Title = "Choose DEBs to send" }) {
+            using (OpenFileDialog dialog = new OpenFileDialog { Filter = "All files (*.*)|*.*", Multiselect = true, Title = "Choose files to send" }) {
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
                 string[] paths = dialog.FileNames; CompanionServer target = server;
                 adding = true; add.Enabled = false; start.Enabled = false; status.Text = "Preparing files…";
                 ThreadPool.QueueUserWorkItem(delegate {
                     try {
                         foreach (string path in paths) {
-                            SharedPackage item = target.Add(path);
+                            SharedFile item = target.Add(path);
                             if (!IsDisposed && IsHandleCreated) BeginInvoke((Action)delegate { if (server == target) files.Items.Add(item); });
                         }
-                        SetStatus("Ready. Tap Connect / Refresh in Receptor to see these DEBs.");
+                        SetStatus("Ready. Tap Connect / Refresh in Receptor to see these files.");
                     } catch (Exception ex) { SetStatus("Could not add file: " + ex.Message); }
                     finally {
                         if (!IsDisposed && IsHandleCreated) {

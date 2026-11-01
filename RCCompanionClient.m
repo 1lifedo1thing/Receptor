@@ -47,8 +47,7 @@ static BOOL RCValidFile(id file) {
     id name = [file objectForKey:@"name"], size = [file objectForKey:@"size"];
     return RCHexString([file objectForKey:@"id"], 32) && RCHexString([file objectForKey:@"sha256"], 64) &&
         [name isKindOfClass:[NSString class]] && [name length] &&
-        [[[name pathExtension] lowercaseString] isEqualToString:@"deb"] &&
-        [size isKindOfClass:[NSNumber class]] && [size longLongValue] >= 8 && [size longLongValue] <= 2147483647LL;
+        [size isKindOfClass:[NSNumber class]] && [size longLongValue] >= 0 && [size longLongValue] <= 2147483647LL;
 }
 
 @interface RCCompanionClient ()
@@ -198,7 +197,7 @@ static NSArray *RCFetchPairingInfo(RCCompanionClient *client, NSString *host) {
     return YES;
 }
 - (BOOL)receiveFile:(NSDictionary *)file error:(NSError **)error {
-    if (_busy || !_host || !_key || !_session || !RCValidFile(file)) { if (error) *error = RCError(@"Connect to the desktop and choose a valid DEB first."); return NO; }
+    if (_busy || !_host || !_key || !_session || !RCValidFile(file)) { if (error) *error = RCError(@"Connect to the desktop and choose a valid file first."); return NO; }
     _busy = YES; @synchronized(self) { _cancelled = NO; }
     [NSThread detachNewThreadSelector:@selector(run:) toTarget:self withObject:[NSDictionary dictionaryWithObject:file forKey:@"file"]];
     return YES;
@@ -277,29 +276,33 @@ static NSArray *RCFetchPairingInfo(RCCompanionClient *client, NSString *host) {
         if (!failure) {
             if ([self isCancelled]) failure = @"Transfer cancelled.";
             else if (status == 403) failure = @"Pairing failed. Check the code shown on your PC.";
-            else if (code != CURLE_OK || status != 200) failure = @"Could not receive the DEB list or file. Keep the desktop app open, check both devices are on the same Wi-Fi, and allow it through the PC's private-network firewall. Try refreshing the connection.";
+            else if (code != CURLE_OK || status != 200) failure = @"Could not receive the file list or file. Keep the desktop app open, check both devices are on the same Wi-Fi, and allow it through the PC's private-network firewall. Try refreshing the connection.";
             else if (context.badHeader || !RCEqual(context.auth, responseMAC)) failure = @"Desktop authentication failed. Nothing was installed. Check the pairing code and reconnect.";
-            else if (file && (context.received != context.limit || !RCEqual(hash, [file objectForKey:@"sha256"]))) failure = @"The DEB failed its integrity check. Nothing was installed. Refresh the list and retry.";
+            else if (file && (context.received != context.limit || !RCEqual(hash, [file objectForKey:@"sha256"]))) failure = @"The file failed its integrity check. Nothing was installed. Refresh the list and retry.";
         }
         curl_easy_cleanup(curl);
     }
     curl_slist_free_all(headers); [context.auth release];
     if (!failure && file) {
-        char magic[8];
-        if (pread(context.descriptor, magic, 8, 0) != 8 || memcmp(magic, "!<arch>\n", 8) || fsync(context.descriptor)) failure = @"The received file is not a readable Debian archive, or could not be saved.";
+        if (fsync(context.descriptor)) failure = @"The received file could not be saved. Check free space.";
     }
-    if (context.descriptor >= 0 && close(context.descriptor) && !failure) failure = @"Could not finish saving the DEB. Check free space.";
+    if (context.descriptor >= 0 && close(context.descriptor) && !failure) failure = @"Could not finish saving the file. Check free space.";
     if (!failure && file) {
         NSString *safe = RCSafeFilename([file objectForKey:@"name"]);
         NSString *saved = nil;
         for (int i = 0; i < 10000; ++i) {
-            NSString *candidate = i ? [NSString stringWithFormat:@"%@ (%d).deb", [safe stringByDeletingPathExtension], i] : safe;
+            NSString *candidate = safe;
+            if (i) {
+                NSString *extension = [safe pathExtension];
+                candidate = [NSString stringWithFormat:@"%@ (%d)", [safe stringByDeletingPathExtension], i];
+                if ([extension length]) candidate = [candidate stringByAppendingPathExtension:extension];
+            }
             NSString *destination = [RCDownloadsDirectory stringByAppendingPathComponent:candidate];
             if (link([partial fileSystemRepresentation], [destination fileSystemRepresentation]) == 0) { saved = candidate; break; }
             if (errno != EEXIST) break;
         }
         if (saved) [result setObject:saved forKey:@"saved"];
-        else failure = @"Could not publish the received DEB. Existing files were preserved.";
+        else failure = @"Could not publish the received file. Existing files were preserved.";
     }
     if (partial) unlink([partial fileSystemRepresentation]);
     if (!failure && !file) {

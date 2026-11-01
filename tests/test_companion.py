@@ -13,6 +13,8 @@ import secrets
 import socket
 import subprocess
 import tempfile
+import io
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,9 +34,27 @@ def main():
         source = Path(temporary) / 'Example & snowman \u2603.deb'
         payload = b'!<arch>\n' + secrets.token_bytes(256 * 1024)
         source.write_bytes(payload)
+        zip_bytes = io.BytesIO()
+        with zipfile.ZipFile(zip_bytes, 'w') as archive:
+            archive.writestr('hello.txt', 'Receptor fixture')
+        fixtures = {
+            source.name: payload,
+            'image.png': (ROOT / 'App/Resources/Icon.png').read_bytes(),
+            'notes.txt': 'Hello, Receptor! \u2603\n'.encode(),
+            'archive.zip': zip_bytes.getvalue(),
+            'test.ipa': zip_bytes.getvalue(),  # Transport fixture, not an installable application.
+            'README': b'No extension is required.',
+            'empty-file': b'',
+            'empty.txt': b'',
+            'unknown.extension': b'\x00\xff\x01arbitrary data',
+        }
+        sources = []
+        for name, data in fixtures.items():
+            file_path = Path(temporary) / name
+            file_path.write_bytes(data); sources.append(str(file_path))
         settings = Path(temporary) / 'pairing.dat'
         def start():
-            return subprocess.Popen([str(output), str(settings), str(source)], stdin=subprocess.PIPE,
+            return subprocess.Popen([str(output), str(settings)] + sources, stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         def pairing_info(port):
             connection = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
@@ -71,11 +91,20 @@ def main():
             assert status == 200
             assert hmac.compare_digest(auth, mac(key, 'response\n' + nonce + '\n' + hashlib.sha256(body).hexdigest() + '\n' + session))
             manifest = plistlib.loads(body)
-            assert manifest['protocol'] == 2 and len(manifest['files']) == 1
-            file = manifest['files'][0]
+            assert manifest['protocol'] == 2 and len(manifest['files']) == len(fixtures)
+            assert len({f['id'] for f in manifest['files']}) == len(fixtures)
+            file = next(f for f in manifest['files'] if f['name'] == source.name)
             assert file['name'] == source.name and file['size'] == len(payload)
             assert file['sha256'] == hashlib.sha256(payload).hexdigest()
             print('PASS: authenticated plist manifest, Unicode names and file metadata')
+            for item in manifest['files']:
+                status, received, auth, transfer_nonce = request('/v2/files/' + item['id'])
+                expected = fixtures[item['name']]
+                digest = hashlib.sha256(expected).hexdigest()
+                assert status == 200 and received == expected and item['size'] == len(expected)
+                assert item['sha256'] == digest
+                assert hmac.compare_digest(auth, mac(key, 'response\n' + transfer_nonce + '\n' + digest + '\n' + session))
+            print('PASS: PNG, UTF-8 text, ZIP, IPA, DEB, arbitrary binary, extensionless and zero-byte files preserve bytes and authenticate')
             assert request(nonce=nonce)[0] == 409
             assert request(secret='0' * 64)[0] == 403
             assert request(method='POST')[0] == 403

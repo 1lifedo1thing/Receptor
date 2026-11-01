@@ -72,11 +72,11 @@
     (void)tableView; return section == 0 ? 4 : [_packages count];
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    (void)tableView; return section == 0 ? @"Pair with your PC" : @"DEBs on desktop";
+    (void)tableView; return section == 0 ? @"Pair with your PC" : @"Files on desktop";
 }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     (void)tableView;
-    return section == 0 ? _status : @"Tap a DEB to receive it, then confirm installation on this device. Keep Receptor open. Both devices must be on the same Wi-Fi. File contents are not encrypted in transit; authentication and integrity are checked before installation.";
+    return section == 0 ? _status : @"Tap any file to receive it. Open it from Browse to preview, share or install a package. Keep Receptor open. Both devices must be on the same Wi-Fi. File contents are not encrypted in transit; authentication and integrity are checked before installation.";
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     (void)tableView;
@@ -117,7 +117,7 @@
             [self setStatus:@"Wait for the current installation to finish first."]; return;
         }
         // The client uses the last authenticated session, rather than unsaved field edits.
-        if ([_client receiveFile:[_packages objectAtIndex:indexPath.row] error:&error]) [self setStatus:@"Receiving DEB… Keep Receptor open. Cancel stops the transfer."];
+        if ([_client receiveFile:[_packages objectAtIndex:indexPath.row] error:&error]) [self setStatus:@"Receiving file… Keep Receptor open. Cancel stops the transfer."];
         else [self setStatus:[error localizedDescription]];
     }
 }
@@ -131,13 +131,13 @@
         [_packages release]; _packages = [files copy];
         NSString *warning = [result objectForKey:@"saveWarning"];
         if (!warning) { _code.text = @""; _code.placeholder = @"Saved pairing"; }
-        [self setStatus:warning ?: ([files count] ? @"Paired and remembered. Choose a DEB below." : @"Connection remembered. Add DEBs on the PC, then tap Connect / Refresh.")];
+        [self setStatus:warning ?: ([files count] ? @"Paired and remembered. Choose a file below." : @"Connection remembered. Add files on the PC, then tap Connect / Refresh.")];
     }
     NSString *saved = [result objectForKey:@"saved"];
     if (saved) {
         [[NSNotificationCenter defaultCenter] postNotificationName:RCDownloadsChangedNotification object:nil];
         [self setStatus:[NSString stringWithFormat:@"Received and verified %@. Saved in Receptor.", saved]];
-        if (self.navigationController.topViewController != self || [UIApplication sharedApplication].applicationState != UIApplicationStateActive) return;
+        if (self.navigationController.topViewController != self || [UIApplication sharedApplication].applicationState != UIApplicationStateActive || ![[[saved pathExtension] lowercaseString] isEqualToString:@"deb"]) return;
         [_pendingName release]; _pendingName = [saved copy];
         _installPrompt = [[UIAlertView alloc] initWithTitle:@"Install received DEB?"
             message:[NSString stringWithFormat:@"%@\n\nPackages can run scripts as root. Install only a package you trust. Close Cydia before continuing.", saved]

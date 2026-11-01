@@ -10,26 +10,20 @@ using System.Threading;
 using System.Xml;
 
 namespace ReceptorDesktop {
-    public sealed class SharedPackage : IDisposable {
+    public sealed class SharedFile : IDisposable {
         public readonly string Id, Name, Digest;
         public readonly long Size;
         private readonly FileStream snapshot;
         private readonly string path;
-        public SharedPackage(string source, string directory, Func<bool> cancelled) {
+        public SharedFile(string source, string directory, Func<bool> cancelled) {
             Name = Path.GetFileName(source);
-            if (!String.Equals(Path.GetExtension(Name), ".deb", StringComparison.OrdinalIgnoreCase))
-                throw new IOException("Choose a .deb file.");
             XmlConvert.VerifyXmlChars(Name);
             Id = Guid.NewGuid().ToString("N");
-            path = Path.Combine(directory, Id + ".deb");
+            path = Path.Combine(directory, Id + ".snapshot");
             try {
                 using (FileStream input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read)) {
                     Size = input.Length;
-                    if (Size < 8 || Size > 2147483647L) throw new IOException("DEBs must be between 8 bytes and 2 GB.");
-                    byte[] magic = new byte[8];
-                    if (input.Read(magic, 0, 8) != 8 || Encoding.ASCII.GetString(magic) != "!<arch>\n")
-                        throw new IOException("This file is not a Debian archive.");
-                    input.Position = 0;
+                    if (Size > 2147483647L) throw new IOException("Files must be no larger than 2 GB.");
                     using (FileStream output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                     using (SHA256 sha = SHA256.Create()) {
                         byte[] buffer = new byte[65536]; int count;
@@ -58,7 +52,7 @@ namespace ReceptorDesktop {
         private readonly ConnectionSettings identity;
         private readonly string session;
         private readonly object gate = new object();
-        private readonly List<SharedPackage> packages = new List<SharedPackage>();
+        private readonly List<SharedFile> packages = new List<SharedFile>();
         private readonly HashSet<TcpClient> clients = new HashSet<TcpClient>();
         private readonly HashSet<string> nonces = new HashSet<string>();
         private readonly string staging = Path.Combine(Path.GetTempPath(), "Receptor-" + Guid.NewGuid().ToString("N"));
@@ -77,15 +71,15 @@ namespace ReceptorDesktop {
             try { listener.Start(8); } catch { Directory.Delete(staging); throw; }
             Thread thread = new Thread(AcceptLoop); thread.IsBackground = true; thread.Start();
         }
-        public SharedPackage Add(string path) {
+        public SharedFile Add(string path) {
             lock (gate) {
                 if (stopped) throw new IOException("Sharing has stopped.");
-                if (packages.Count + pendingAdds >= 32) throw new IOException("Share up to 32 DEBs per session.");
+                if (packages.Count + pendingAdds >= 32) throw new IOException("Share up to 32 files per session.");
                 pendingAdds++;
             }
-            SharedPackage item = null;
+            SharedFile item = null;
             try {
-                item = new SharedPackage(path, staging, delegate { return stopped; });
+                item = new SharedFile(path, staging, delegate { return stopped; });
                 lock (gate) { if (stopped) throw new IOException("Sharing has stopped."); packages.Add(item); }
                 return item;
             } catch { if (item != null) item.Dispose(); throw; }
@@ -121,7 +115,7 @@ namespace ReceptorDesktop {
                     xml.WriteStartDocument(); xml.WriteStartElement("plist"); xml.WriteAttributeString("version", "1.0");
                     xml.WriteStartElement("dict"); xml.WriteElementString("key", "protocol"); xml.WriteElementString("integer", "2");
                     xml.WriteElementString("key", "files"); xml.WriteStartElement("array");
-                    lock (gate) foreach (SharedPackage item in packages) {
+                    lock (gate) foreach (SharedFile item in packages) {
                         xml.WriteStartElement("dict");
                         Field(xml, "id", "string", item.Id); Field(xml, "name", "string", item.Name);
                         Field(xml, "size", "integer", item.Size.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -188,15 +182,15 @@ namespace ReceptorDesktop {
                     if (route == "/v2/manifest") {
                         byte[] body = Manifest();
                         Header(stream, 200, body.Length, Mac(key, "response\n" + nonce + "\n" + Hash(body) + "\n" + session), "application/x-plist");
-                        stream.Write(body, 0, body.Length); Notify("Connected. Choose a DEB in Receptor on your iPad.");
+                        stream.Write(body, 0, body.Length); Notify("Connected. Choose a file in Receptor on your iPad.");
                     } else {
-                        SharedPackage item;
-                        lock (gate) item = packages.Find(delegate(SharedPackage p) { return p.Id == route.Substring(10); });
+                        SharedFile item;
+                        lock (gate) item = packages.Find(delegate(SharedFile p) { return p.Id == route.Substring(10); });
                         if (item == null) { Header(stream, 404, 0, null, "text/plain"); return; }
                         Notify("Sending " + item.Name + "…");
-                        Header(stream, 200, item.Size, Mac(key, "response\n" + nonce + "\n" + item.Digest + "\n" + session), "application/vnd.debian.binary-package");
+                        Header(stream, 200, item.Size, Mac(key, "response\n" + nonce + "\n" + item.Digest + "\n" + session), "application/octet-stream");
                         item.Send(stream);
-                        Notify("Sent " + item.Name + ". Confirm installation on the iPad; this is not an installation result.");
+                        Notify("Sent " + item.Name + ". Open the file in Receptor on your device. Installation is a separate on-device action.");
                     }
                 }
             } catch (IOException) { } catch (SocketException) { } catch (ObjectDisposedException) { }
@@ -213,7 +207,7 @@ namespace ReceptorDesktop {
             // Closing sockets unblocks in-progress sends before their snapshot files are disposed.
             for (;;) { lock (gate) { if (clients.Count == 0 && pendingAdds == 0) break; } Thread.Sleep(20); }
             lock (gate) {
-                foreach (SharedPackage item in packages) item.Dispose(); packages.Clear();
+                foreach (SharedFile item in packages) item.Dispose(); packages.Clear();
                 if (pendingAdds == 0) TryDeleteDirectory();
             }
         }
