@@ -18,3 +18,13 @@ int RCIsSystemInstallerContent(const char *extension, const char *mime) {
     for (size_t i = 0; i < sizeof(types) / sizeof(*types); ++i) if (mime_equal(mime, types[i])) return 1;
     return 0;
 }
+int RCIsSystemInstallerContentOnIOS(const char *extension, const char *mime, int major) {
+    return RCIsSystemInstallerContent(extension, mime) ||
+        (major >= 6 && ((extension && !strcasecmp(extension, "pkpass")) || mime_equal(mime, "application/vnd.apple.pkpass")));
+}
+int RCIsKnownDownloadExtension(const char *extension) {
+    static const char *types[] = {"zip", "rar", "7z", "tar", "gz", "bz2", "xz", "deb", "ipa", "dmg", "iso", "exe", "bin", "torrent", "pdf",
+        "doc", "docx", "xls", "xlsx", "ppt", "pptx", "epub", "txt", "csv", "log", "c", "h", "m", "cpp", "py", "sh", "plist", "mp3", "m4a", "mp4", "mov"};
+    for (size_t i = 0; i < sizeof(types) / sizeof(*types); ++i) if (extension && !strcasecmp(extension, types[i])) return 1;
+    return 0;
+}

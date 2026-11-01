@@ -26,6 +26,16 @@ def main():
     for mime in [None, b'', b'text/plain', b'application/x-apple-aspen-config-extra',
                  b'application/pkcs12-not-really', b'application/octet-stream; filename=x.mobileconfig']:
         assert classify(None, mime) == 0
+    known = ctypes.CDLL(str(library)).RCIsKnownDownloadExtension
+    known.argtypes = [ctypes.c_char_p]; known.restype = ctypes.c_int
+    for extension in [b'zip', b'IPA', b'deb', b'PDF', b'plist', b'mp4']: assert known(extension) == 1
+    for extension in [None, b'', b'png', b'html', b'mobileconfig', b'cer', b'pkpass', b'zip.exe.html']: assert known(extension) == 0
+    platform = ctypes.CDLL(str(library)).RCIsSystemInstallerContentOnIOS
+    platform.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]; platform.restype = ctypes.c_int
+    for major in [4, 5, 6, 7, 8]:
+        assert platform(b'mobileconfig', None, major) == 1
+        assert platform(b'PKPASS', None, major) == (major >= 6)
+        assert platform(None, b'Application/Vnd.Apple.Pkpass; charset=utf-8', major) == (major >= 6)
     print('PASS: native installer extensions/MIMEs (including case/parameters) bypass downloads; ordinary files and lookalikes do not')
 
 

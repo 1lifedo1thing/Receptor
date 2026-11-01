@@ -35,17 +35,12 @@ BOOL RCMethodHasObjectArguments(id target, SEL selector, NSUInteger count) {
 static BOOL RCIsMainFrame(id view, id frame) {
     return frame && [view respondsToSelector:@selector(mainFrame)] && [view mainFrame] == frame;
 }
+static BOOL RCNativeInstaller(const char *extension, const char *mime) {
+    return RCIsSystemInstallerContentOnIOS(extension, mime, (int)[[[UIDevice currentDevice] systemVersion] integerValue]);
+}
 
 static BOOL RCKnownFileExtension(NSURLRequest *request) {
-    // Explicit file links, including source/plain-text files Safari would otherwise render.
-    static NSSet *extensions = nil;
-    @synchronized([ReceptorPolicyProxy class]) {
-        if (!extensions) extensions = [[NSSet alloc] initWithObjects:@"zip", @"rar", @"7z", @"tar", @"gz",
-            @"bz2", @"xz", @"deb", @"ipa", @"dmg", @"iso", @"exe", @"bin", @"torrent", @"pdf",
-            @"doc", @"docx", @"xls", @"xlsx", @"ppt", @"pptx", @"epub", @"txt", @"csv", @"log",
-            @"c", @"h", @"m", @"cpp", @"py", @"sh", @"plist", @"mp3", @"m4a", @"mp4", @"mov", nil];
-    }
-    return [extensions containsObject:[[[[request URL] path] pathExtension] lowercaseString]];
+    return RCIsKnownDownloadExtension([[[request URL] path] pathExtension].UTF8String);
 }
 
 static BOOL RCIsClickedFile(NSDictionary *action, NSURLRequest *request) {
@@ -56,7 +51,7 @@ static BOOL RCIsClickedFile(NSDictionary *action, NSURLRequest *request) {
 }
 
 static BOOL RCConsume(NSURLRequest *request, id listener) {
-    if (RCIsSystemInstallerContent([[[request URL] path] pathExtension].UTF8String, NULL)) return NO;
+    if (RCNativeInstaller([[[request URL] path] pathExtension].UTF8String, NULL)) return NO;
     if (!RCIsDownloadRequest(request) || ![listener respondsToSelector:@selector(ignore)]) return NO;
     // Resolve policy synchronously on WebKit's calling thread. Never carry a listener
     // across threads or leave a navigation suspended while a UIKit alert is visible.
@@ -103,7 +98,7 @@ static BOOL RCConsume(NSURLRequest *request, id listener) {
 - (void)webView:(id)view decidePolicyForMIMEType:(NSString *)MIMEType
         request:(NSURLRequest *)request frame:(id)frame decisionListener:(id)listener {
     // Native system installers must see these responses even if WebView cannot render them.
-    if (RCIsSystemInstallerContent([[[request URL] path] pathExtension].UTF8String, [MIMEType UTF8String])) {
+    if (RCNativeInstaller([[[request URL] path] pathExtension].UTF8String, [MIMEType UTF8String])) {
         [_originalDelegate webView:view decidePolicyForMIMEType:MIMEType request:request frame:frame decisionListener:listener];
         return;
     }
@@ -117,7 +112,7 @@ static BOOL RCConsume(NSURLRequest *request, id listener) {
             id source = [frame provisionalDataSource];
             NSURLResponse *response = [source respondsToSelector:@selector(response)] ? [source response] : nil;
             if ([response isKindOfClass:[NSHTTPURLResponse class]]) {
-                systemInstaller = RCIsSystemInstallerContent([[response suggestedFilename] pathExtension].UTF8String, [[response MIMEType] UTF8String]);
+                systemInstaller = RCNativeInstaller([[response suggestedFilename] pathExtension].UTF8String, [[response MIMEType] UTF8String]);
                 NSDictionary *headers = [(NSHTTPURLResponse *)response allHeaderFields];
                 for (NSString *key in headers) {
                     if ([key caseInsensitiveCompare:@"Content-Disposition"] == NSOrderedSame) {

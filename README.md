@@ -1,6 +1,6 @@
 # Receptor
 
-Safari downloads, a standalone file browser and IPA/DEB installation for **jailbroken iOS 4.0–6.x, armv7**. Built with **SDK 5.0**, targeting **iOS 4.0**, using manual reference counting.
+Safari downloads, a standalone file browser and IPA/DEB installation for **jailbroken 32-bit iOS 4.0–8.x** (iOS 7–8 support is experimental). Built with **SDK 5.0**, targeting **iOS 4.0**, using manual reference counting.
 
 ## Install
 
@@ -18,15 +18,23 @@ GitHub Pages enforces HTTPS. Some legacy Cydia clients may not support its TLS/c
 
 Requires a rootful jailbreak and Cydia Substrate. The jailbreak must permit access to `/var/mobile/Media/Receptor/`. No global sandbox patch or certificate-validation bypass is installed. A compatible AppSync setup may be needed for IPAs that are not validly signed for the device; it is not installed automatically.
 
+## Experimental iOS 7–8 support (1.5.0)
+
+The first 32-bit iOS 7–8 test build is available in the [1.5.0 beta release](https://github.com/jajaengland/Receptor/releases/tag/v1.5.0-beta1) and Cydia source. Existing 1.4.1 files remain unchanged and available for iOS 4–6. **No iOS 7/8 physical-device result is claimed yet, and arm64 Safari injection is not included.** The Windows companion stays at 1.4.0; pairing is unchanged.
+
+iOS 7 retains the guarded legacy WebView adapter. iOS 8 has a new guarded WKWebView navigation delegate, forwarding Safari's optional callbacks and authentication handling while leaving profile/certificate and native Passbook responses to Safari. On iOS 7–8, choose **Open Receptor** at the Safari prompt and confirm **Download** inside the app. This avoids relying on Safari's storage sandbox/background lifetime. The handoff carries the HTTP(S) GET URL only, with fresh in-app consent; private Safari cookies, headers, POST bodies, one-time responses and blob URLs are not replayed. Start with public file URLs.
+
+IPA installation retains MobileInstallationInstall through iOS 7 and uses the checked LSApplicationWorkspace interface on iOS 8. A bounded reader obtains the IPA bundle identifier without extracting an archive; the native installer still checks compatibility, signing and authorization. iOS 8 also requests notification permission for completion alerts. New classes and zeroing-weak functions are dynamically resolved so the binaries retain their iOS 4 startup compatibility. See the [runtime matrix and device test checklist](docs/IOS78-TESTING.md).
+
 ## Profiles, Catbox and Photos (1.4.1)
 
 Safari configuration profiles and certificates are left to the native system installer, including `.mobileconfig`, `.cer`, `.crt`, `.der`, `.p12` and `.pfx`, their recognized installer MIME types, and response-suggested installer filenames. Receptor no longer consumes those responses as generic unsupported downloads. The system installer retains review/confirmation; Receptor does not install profiles or trust roots itself. After updating, fully close/reopen Safari before retrying a profile link. If a profile was already downloaded into Receptor, revisit its original link in Safari. This follows Apple's documented [Safari certificate/identity installation path](https://developer.apple.com/library/archive/qa/qa1745/_index.html).
 
 Direct app downloads now supply a default `Receptor/1.4.1 (iOS)` User-Agent when the request has none. This fixes a reproduced Catbox connection close (`curl 56`, `ssl_read returned: (-0x0000)`). Existing browser User-Agent headers are preserved. Certificate-chain and hostname checks remain enabled. The reported direct PNG succeeded in a full-body test with the pinned curl/Mbed TLS stack; the URL/content is not included in the source or release notes.
 
-Use **Save to Photos** from a file's actions or the image preview's bottom toolbar. Supported images and `.mov`/`.mp4`/`.m4v` videos use AssetsLibrary and show success or the system's error. iOS 4.1–6 receives original encoded image data, preserving source resolution/metadata rather than saving the reduced preview. Images have a 64 MB import limit. iOS 4.0 uses its older decoded-image API with a 6-megapixel limit. Codec support and Photos permissions still apply.
+Use **Save to Photos** from a file's actions or the image preview's bottom toolbar. Supported images and `.mov`/`.mp4`/`.m4v` videos use AssetsLibrary and show success or the system's error. iOS 4.1 and later receives original encoded image data, preserving source resolution/metadata rather than saving the reduced preview. Images have a 64 MB import limit. iOS 4.0 uses its older decoded-image API with a 6-megapixel limit. Codec support and Photos permissions still apply.
 
-**Share…** is separate from **Open In…**. On iOS 6 it presents the public system activity sheet, in a popover on iPad. On iOS 4–5 it presents a legacy menu with Save to Photos for supported media and Open In. Open In is an app picker: if no installed app registers support for the file type, an explanatory message appears. The image preview includes direct Save to Photos and Open In buttons as well as Share.
+**Share…** is separate from **Open In…**. On iOS 6 and later it presents the public system activity sheet, in a popover on iPad. On iOS 4–5 it presents a legacy menu with Save to Photos for supported media and Open In. Open In is an app picker: if no installed app registers support for the file type, an explanatory message appears. The image preview includes direct Save to Photos and Open In buttons as well as Share.
 
 This is an iOS-side update; the Windows companion remains version 1.4.0 and saved pairing is unchanged.
 
@@ -89,18 +97,18 @@ The local `lib/libLegacySubstrate.tbd` is a link-time interface pointing to `/us
 
 | Files | Responsibility |
 | --- | --- |
-| `Tweak.x`, `ReceptorPolicyProxy.*` | Guarded legacy WebKit policy-delegate interception in MobileSafari |
+| `Tweak.x`, `ReceptorPolicyProxy.*`, `RCWKNavigationProxy.*` | Guarded WebView (iOS 4–7) / WKWebView (iOS 8) interception in 32-bit Safari |
 | `RCCurlTransfer.*` | Worker-thread HTTP(S), portable TLS, response/filename parsing, redirect rules |
 | `DownloadManager.*` | Streamed disk writes, active transfers, background tasks, cancellation and status snapshots |
 | `App/`, `FileBrowserViewController.*`, `RCFileArtwork.*`, `RCFileSharing.*` | Home screen app, grid/list browser, search, image thumbnails/zoom, Photos saving, Share/Open In, URL downloads and install UI |
-| `RCIPAInstaller.*` | Guarded dynamic lookup of `MobileInstallationInstall` on supported legacy firmware |
+| `RCIPAInstaller.*`, `RCIPAArchive.*` | Guarded legacy/workspace installation and bounded ZIP Info.plist reading for iOS 8 |
 | `RCDEBInstaller.*`, `Tools/receptor-deb-helper.c` | Confirmed local DEB installation, bounded output/logging and fixed-operation root helper |
 | `Desktop/`, `RCCompanionClient.*`, `RCCompanionViewController.*` | Windows Wi-Fi file sharing, authenticated transfer and on-device installation consent |
 | `ReceptorUI.*`, `ReceptorPaths.*` | Consent/notifications, app launching, storage and filename handling |
 | `vendor/tls/`, `layout/` | Armv7 TLS libraries, CA roots, licenses and package scripts |
 | `docs/`, `scripts/update-repository.py` | Flat Cydia repository and deterministic compressed indexes |
 
-The tweak wraps `WebView -setPolicyDelegate:` and forwards optional callbacks to Safari's original assign-owned delegate. Signatures are checked before wrapping. Policy listeners are resolved on WebKit's calling thread; consent and download management run on the main thread. curl runs on worker threads and hands each response/data chunk to the main thread synchronously, bounding queued data and preserving file/UI ownership. MRC ownership is explicit throughout.
+On iOS 4–7 the tweak wraps `WebView -setPolicyDelegate:` and forwards optional callbacks to Safari's original assign-owned delegate. Signatures are checked before wrapping. Policy listeners are resolved on WebKit's calling thread; consent and download management run on the main thread. curl runs on worker threads and hands each response/data chunk to the main thread synchronously, bounding queued data and preserving file/UI ownership. MRC ownership is explicit throughout.
 
 Files stream into exclusive, mode-0600 hidden partials. Sanitized names cannot create subdirectories or hidden user files. Completed transfers are flushed and atomically published without overwriting existing files; duplicate names receive a numbered suffix. The browser ignores hidden files and symlinks. Handled failures/cancellation remove owned partials; a crash or kill can leave an ignored hidden `.part` file. No archives are unpacked automatically.
 
@@ -120,13 +128,17 @@ The root helper is limited to package installation and is not a general privileg
 
 1.4.0 adds arbitrary file transfers, a grid/list browser, filename search, bounded image previews and Open In for every file. Eight-character codes and saved pairing from 1.3.1 are retained. It compiles the iOS pairing client against SDK 5.0 for armv7/iOS 4. Protocol integration tests exercise the actual Windows server, authentication/replay rejection, streamed immutable file contents, malformed requests and shutdown. The desktop form has been rendered for layout inspection. Updated tests verify PNG/text/ZIP/IPA/DEB/binary/extensionless/empty-file transfers, DPAPI persistence, remembered pairing after a server restart, stale-session rejection, reset and the production C key-derivation loop against independent vectors. The new iOS grid, preview/rotation/zoom and Open In flows require physical-device testing. Pairing, receiving and installation through the new iOS screen still need testing on the physical device.
 
-User also reports Receptor works on **iOS 6.1.3**, without specifying the device or complete feature coverage. iOS 6.x patch releases are included by the package requirement `firmware (>= 4.0), firmware (<< 7.0)`.
+User also reports Receptor works on **iOS 6.1.3**, without specifying the device or complete feature coverage. iOS 6.x patch releases are included by the package requirement `firmware (>= 4.0), firmware (<< 9.0)`.
 
-Earlier user-reported iPad 1 / iOS 5.1.1 results: three IPA downloads completed and one installed app launched. Two other app launch failures remain unexplained; compatibility, signing and other app-specific causes have not been established. DEB installation appearing in Cydia has not yet been confirmed on-device. Treat the current release as experimental and the full iOS 4–6 range as intended targets rather than a validated support matrix.
+Earlier user-reported iPad 1 / iOS 5.1.1 results: three IPA downloads completed and one installed app launched. Two other app launch failures remain unexplained; compatibility, signing and other app-specific causes have not been established. DEB installation appearing in Cydia has not yet been confirmed on-device. Treat the current release as experimental and the full iOS 4–8 range as intended targets rather than a validated support matrix.
 
 1.4.1 compiles/signs for the same legacy target. Native tests exercise the production installer-content classifier, including extension/MIME lookalikes, and a TLS regression endpoint that closes requests lacking the User-Agent. Valid downloads still pass, and untrusted/hostname-mismatched certificates still fail. The new native installer handoff, Photos import and iOS 6/legacy sharing UI need on-device validation.
 
+1.5.0 adds experimental 32-bit iOS 7/8 adapters. ZIP-reader tests and 1000 malformed-archive mutations pass; built-binary import checks verify that no iOS 8 class/weak-function startup dependency was added. Safari delegate lifecycle, app handoff, iOS 8 notifications and native IPA/DEB installation need physical-device validation.
+
 ```sh
+python3 tests/check_legacy_linkage.py
+python3 tests/test_ipa_archive.py
 python3 tests/test_system_content.py
 python3 tests/check_project.py
 python3 scripts/update-repository.py

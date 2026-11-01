@@ -7,3 +7,5 @@ BOOL RCEnsureDownloadsDirectory(NSError **error);
 NSString *RCSafeFilename(NSString *name);
 BOOL RCIsRegularDownload(NSString *name);
 BOOL RCIsDownloadRequest(NSURLRequest *request);
+NSURL *RCDownloadHandoffURL(NSURLRequest *request);
+NSURLRequest *RCRequestFromDownloadHandoff(NSURL *url);

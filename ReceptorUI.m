@@ -59,14 +59,15 @@
 - (void)presentNextAlert {
     if (_alert || [[UIApplication sharedApplication] applicationState] != UIApplicationStateActive) return;
     BOOL app = [[[NSBundle mainBundle] bundleIdentifier] isEqual:@"com.receptor.app"];
+    BOOL handoff = !app && [[[UIDevice currentDevice] systemVersion] integerValue] >= 7;
     if ([_requests count]) {
         _promptRequest = [[_requests objectAtIndex:0] retain];
         [_requests removeObjectAtIndex:0];
-        NSString *message = [NSString stringWithFormat:@"Download %@ from %@?",
+        NSString *message = [NSString stringWithFormat:handoff ? @"Continue in Receptor to download %@ from %@?" : @"Download %@ from %@?",
             RCSafeFilename([[[_promptRequest URL] path] lastPathComponent]), [[_promptRequest URL] host]];
         _alert = [[UIAlertView alloc] initWithTitle:@"Receptor" message:message delegate:self
-            cancelButtonTitle:@"Cancel" otherButtonTitles:@"Download", nil];
-        if (!app) [_alert addButtonWithTitle:@"Open Receptor"];
+            cancelButtonTitle:@"Cancel" otherButtonTitles:handoff ? @"Open Receptor" : @"Download", nil];
+        if (!app && !handoff) [_alert addButtonWithTitle:@"Open Receptor"];
     } else if ([_messages count]) {
         NSString *message = [[[_messages objectAtIndex:0] retain] autorelease];
         [_messages removeObjectAtIndex:0];
@@ -81,8 +82,14 @@
     NSURLRequest *request = [_promptRequest autorelease]; _promptRequest = nil;
     [_alert autorelease]; _alert = nil;
     if (request && buttonIndex == 1) {
-        NSError *error = nil;
-        if (![[DownloadManager sharedManager] startDownloadWithRequest:request error:&error]) [self showMessage:[error localizedDescription]];
+        BOOL app = [[[NSBundle mainBundle] bundleIdentifier] isEqualToString:@"com.receptor.app"];
+        if (!app && [[[UIDevice currentDevice] systemVersion] integerValue] >= 7) {
+            NSURL *handoff = RCDownloadHandoffURL(request);
+            if (!handoff || ![[UIApplication sharedApplication] openURL:handoff]) [self showMessage:@"Could not open this link in Receptor. Open Receptor and paste the file URL using +."];
+        } else {
+            NSError *error = nil;
+            if (![[DownloadManager sharedManager] startDownloadWithRequest:request error:&error]) [self showMessage:[error localizedDescription]];
+        }
     } else if ((request && buttonIndex == 2) || (!request && buttonIndex == 1)) [self showFiles];
     [self presentNextAlert];
 }

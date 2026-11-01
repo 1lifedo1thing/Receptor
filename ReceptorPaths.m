@@ -55,3 +55,24 @@ BOOL RCIsDownloadRequest(NSURLRequest *request) {
         && (![[request HTTPMethod] length] || [[request HTTPMethod] isEqualToString:@"GET"])
         && ![request HTTPBody] && ![request HTTPBodyStream];
 }
+NSURL *RCDownloadHandoffURL(NSURLRequest *request) {
+    if (!RCIsDownloadRequest(request)) return nil;
+    NSString *absolute = [[request URL] absoluteString]; if ([absolute length] > 8192) return nil;
+    CFStringRef encoded = CFURLCreateStringByAddingPercentEscapes(NULL, (CFStringRef)absolute, NULL,
+        CFSTR(":/?#[]@!$&'()*+,;=%"), kCFStringEncodingUTF8);
+    if (!encoded) return nil;
+    NSString *text = [@"receptor://download?url=" stringByAppendingString:(NSString *)encoded]; CFRelease(encoded);
+    return [text length] <= 16384 ? [NSURL URLWithString:text] : nil;
+}
+NSURLRequest *RCRequestFromDownloadHandoff(NSURL *url) {
+    if (![[[url scheme] lowercaseString] isEqualToString:@"receptor"] || ![[[url host] lowercaseString] isEqualToString:@"download"] ||
+        [[url absoluteString] length] > 16384 || [url user] || [url password] || [url port] || [[url fragment] length] ||
+        ([[url path] length] && ![[url path] isEqualToString:@"/"])) return nil;
+    NSString *query = [url query];
+    if (![query hasPrefix:@"url="] || [query rangeOfString:@"&"].location != NSNotFound) return nil;
+    NSString *text = [[query substringFromIndex:4] stringByReplacingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+    if (![text length] || [text length] > 8192) return nil;
+    NSURL *target = [NSURL URLWithString:text]; if (!target || ![[target host] length]) return nil;
+    NSURLRequest *request = [NSURLRequest requestWithURL:target];
+    return RCIsDownloadRequest(request) ? request : nil;
+}
