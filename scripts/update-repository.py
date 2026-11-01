@@ -60,7 +60,7 @@ def main():
         # Retire the separate icons package and the one release that required it;
         # keep their immutable files available for old direct download links.
         retired_icons = "Package: com.jajaengland.repoicons\n" in control + "\n"
-        retired_receptor = "Package: com.receptor.downloadmanager\n" in control + "\n" and "Version: 1.2.1\n" in control + "\n"
+        retired_receptor = "Package: com.receptor.downloadmanager\n" in control + "\n" and any("Version: " + version + "\n" in control + "\n" for version in ["1.2.1", "1.5.0", "1.6.0"])
         if retired_icons or retired_receptor:
             continue
         entries.append(control + "\n" + "\n".join([

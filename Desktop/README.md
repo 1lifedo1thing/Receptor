@@ -2,9 +2,9 @@
 
 A small Windows companion for transferring files both ways with Receptor over Wi-Fi. No Safari, SSH account, root password, USB driver or desktop installer is required. Receptor must already be installed on the device.
 
-## Receive files from the iPad/iPhone (1.6.0)
+## Receive files from the iPad/iPhone (1.6.0 beta 2)
 
-Upgrade both apps to **1.6.0**. Existing saved pairings continue working. Stop sharing on the PC, enable **Receive files sent from the device**, choose a folder, and start sharing. In Receptor’s **Files** tab, hold a file or use **••• → Send to PC**. Alternatively, select a readable regular file in the new **Filesystem** tab and choose **Send to PC**. Tap Send on the next screen. Manage pairing there if needed. Keep both apps open until delivery is verified; use **Open folder** on the PC to find the received file. Nothing is automatically opened, installed or executed. Receiving is disabled until explicitly enabled, then its enabled state/folder are saved for future starts. Stop sharing to change them.
+Upgrade the iOS package to **1.6.0b2** and the Windows companion to **1.6.0 beta 2**. Existing saved pairings continue working. Enable **Receive files sent from the device**, choose a folder, and keep sharing running. You can enable receiving or choose its folder while the server is running, without disconnecting or changing the pairing. In Receptor’s **Files** tab, hold a file or use **••• → Send to PC**. Alternatively, select a readable regular file in the new **Filesystem** tab and choose **Send to PC**. Tap Send on the next screen. Manage pairing there if needed. Keep both apps open until delivery is verified; use **Open folder** on the PC to find the received file. Nothing is automatically opened, installed or executed. Receiving is disabled until explicitly enabled, then its enabled state/folder are saved for future starts. Changes apply to new requests; an active upload finishes in its original folder. Stop sharing cancels active transfers. The address/code stay visible while paused and before starting; press Start sharing before trying to connect.
 
 The PC receives only explicitly selected files; it cannot browse the device. The filesystem tab is read-only and uses the iOS app’s existing permissions, including their restrictions. It does not invoke the root DEB helper. Upload preparation uses an anonymous device-local snapshot, requiring additional free space equal to the source size. Changing files and non-regular files are rejected. Sending stops on backgrounding or leaving the screen. A fully delivered copy may remain after a cancelled/lost receipt. The PC publishes verified uploads without overwriting existing files. The maximum is 32 incoming files per sharing session, each at most 2,147,483,647 bytes. Restart sharing for a new session. Local transfers remain unencrypted.
 
@@ -45,13 +45,14 @@ When receiving is enabled, `PUT /v2/uploads?nonce=NONCE` accepts a fixed-length 
 
 Only one inbound upload runs at once. The server streams to a unique `.receptor-receive-<random>.part` in the chosen folder, verifies the digest, flushes, then renames without replacing another file. HTTP 201 returns the UTF-8 saved basename and the standard signed response header. The iOS client verifies that receipt before reporting delivery. Incomplete files are removed on cancellation/disconnect/stop; a PC crash can leave a partial. Receiving disabled returns 403, a busy/replayed request 409, the per-session limit 429, and a digest mismatch 422. A connection closed with an unread rejected body can appear as a TCP reset.
 
-Receive preferences use a DPAPI-encrypted `pairing-v2.dat.receive` sidecar; the original six-field pairing file stays compatible with older companions. Older clients ignore the new manifest flag and continue receiving PC files. Reverse transfers require both apps at 1.6.0.
+Receive preferences use a DPAPI-encrypted `pairing-v2.dat.receive` sidecar; the original six-field pairing file stays compatible with older companions. Older clients ignore the new manifest flag and continue receiving PC files. Reverse transfers require both apps at 1.6.0 or later. Beta 2 adds live receive configuration without changing the server session or clearing the outgoing file list. The native-control regression test enables receiving, uploads a file in the same session and checks visible pairing details across pause/restart using isolated settings.
 
 ## Build and test
 
 ```powershell
 ./Desktop/build.ps1
 python tests/test_companion.py
+python tests/test_companion_ui.py
 ```
 
 ```sh

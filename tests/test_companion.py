@@ -162,12 +162,22 @@ def main():
                 connection.close()
                 return status, body, auth, nonce
 
+            process.stdin.write('receive-off\n'); process.stdin.flush()
+            assert process.stdout.readline().strip() == 'updated'
+            assert plistlib.loads(request()[1])['accepts_uploads'] is False
+            assert upload(name='disabled-live')[0] == 403
+            process.stdin.write('receive-on\n'); process.stdin.flush()
+            assert process.stdout.readline().strip() == 'updated'
+            assert pairing_info(port) == (salt, session)
+            assert plistlib.loads(request()[1])['accepts_uploads'] is True
+            print('PASS: receiving toggles while sharing stays active; saved pairing, server session and file list survive')
             incoming = b'\x00\xff' + secrets.token_bytes(512 * 1024)
             status, body, auth, upload_nonce = upload(incoming, 'iPad snowman \u2603.bin')
             assert status == 201 and body.decode() == 'iPad snowman \u2603.bin'
             assert (receive_folder / body.decode()).read_bytes() == incoming
             assert hmac.compare_digest(auth, mac(key, 'response\n' + upload_nonce + '\n' + hashlib.sha256(body).hexdigest() + '\n' + session))
-            assert upload(incoming, 'iPad snowman \u2603.bin', nonce=upload_nonce)[0] == 409
+            # Empty replay body avoids platform-dependent TCP reset on unread rejected data.
+            assert upload(name='iPad snowman \u2603.bin', nonce=upload_nonce)[0] == 409
             status, body, _, _ = upload(b'duplicate', 'iPad snowman \u2603.bin')
             assert status == 201 and body.decode() == 'iPad snowman \u2603 (1).bin'
             assert (receive_folder / 'iPad snowman \u2603.bin').read_bytes() == incoming

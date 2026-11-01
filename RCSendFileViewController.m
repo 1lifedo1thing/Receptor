@@ -10,7 +10,7 @@
 - (id)initWithPath:(NSString *)path {
     if ((self = [super initWithStyle:UITableViewStyleGrouped])) {
         _path = [path copy]; _client = [[RCCompanionClient alloc] init]; _client.delegate = self;
-        _status = [@"Enable receiving in Receptor Desktop 1.6.0, choose its destination folder and start sharing. Then tap Send to PC below." copy];
+        _status = [@"Enable receiving in Receptor Desktop, choose its destination folder and keep sharing running. Then tap Send to PC below. You can enable receiving without stopping sharing in Desktop 1.6.0 beta 2." copy];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(enteredBackground:) name:UIApplicationDidEnterBackgroundNotification object:nil];
     }
     return self;
@@ -76,7 +76,7 @@
     if (failure) { _sending = NO; [self restoreIdle]; [self setStatus:failure]; return; }
     if ([result objectForKey:@"files"] && _sending) {
         if (!client.canUpload) {
-            _sending = NO; [self restoreIdle]; [self setStatus:@"On the PC, stop sharing, enable Receive files sent from the device, choose a writable destination, then start sharing. Use companion 1.6.0 or later."]; return;
+            _sending = NO; [self restoreIdle]; [self setStatus:@"On the PC, enable Receive files sent from the device and choose a writable folder. Keep sharing running, then tap Send to PC again. Update to Desktop 1.6.0 beta 2 to enable receiving without disconnecting."]; return;
         }
         NSError *error = nil;
         if ([client sendFileAtPath:_path error:&error]) [self setStatus:@"Preparing a private file snapshot, then sending it to the PC…"];

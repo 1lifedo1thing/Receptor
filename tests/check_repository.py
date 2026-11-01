@@ -56,7 +56,9 @@ def main():
             app = plistlib.loads(payload["Applications/Receptor.app/Info.plist"])
             assert app["CFBundleIdentifier"] == "com.receptor.app"
             assert app["MinimumOSVersion"] == "4.0"
-            assert app["CFBundleVersion"] == fields["Version"]
+            # Relabeled beta-1 packages keep their original signed app payload intact.
+            original = {"1.5.0b1": "1.5.0", "1.6.0b1": "1.6.0"}.get(fields["Version"], fields["Version"])
+            assert app["CFBundleVersion"] == original
             ca = payload["Library/Application Support/Receptor/cacert.pem"]
             assert b"-----BEGIN CERTIFICATE-----" in ca
             assert ca == (ROOT.parent / "layout/Library/Application Support/Receptor/cacert.pem").read_bytes()

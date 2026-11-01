@@ -20,7 +20,12 @@ static class CompanionHost {
             for (int i = 1; i < args.Length; i++) server.Add(args[i]);
             Console.WriteLine(server.Port + " " + server.Code);
             Console.Out.Flush();
-            Console.ReadLine();
+            string command;
+            while ((command = Console.ReadLine()) != null && command.Length > 0) {
+                if (command != "receive-on" && command != "receive-off") throw new Exception("Unknown command.");
+                server.ConfigureReceiving(command == "receive-on" ? incoming : null);
+                Console.WriteLine("updated"); Console.Out.Flush();
+            }
         }
     }
 }

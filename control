@@ -1,6 +1,6 @@
 Package: com.receptor.downloadmanager
 Name: Receptor
-Version: 1.6.0
+Version: 1.6.0b2
 Architecture: iphoneos-arm
 Description: Safari downloads and file browser for 32-bit iOS 4 through 8; iOS 7-8 support is experimental.
 Maintainer: Receptor

@@ -178,13 +178,13 @@ Homepage: https://github.com/jajaengland/Receptor
 Depiction: https://jajaengland.github.io/repo/depictions/receptor.html
 Icon: file:///Applications/Receptor.app/Icon.png
 Architecture: iphoneos-arm
-Version: 1.5.0
+Version: 1.5.0b1
 Installed-Size: 2324
-Filename: debs/com.receptor.downloadmanager_1.5.0_iphoneos-arm.deb
-Size: 782610
-MD5sum: b21a1e1c5fbf3bf7ba5d1a5857e040af
-SHA1: 415e2985488d01e19ca7513224356a36a6bfc4c0
-SHA256: 1847936ee06e4cd23175045177e23203aec275717194b526f07c725b3fd45bfc
+Filename: debs/com.receptor.downloadmanager_1.5.0b1_iphoneos-arm.deb
+Size: 782624
+MD5sum: 6e6c7545cbc034e9a895ac11b8f6f36b
+SHA1: 44468c05c068b03b365db8b46cc847b5bc15fe10
+SHA256: a11cef62b49300d18c684788615ca80457b24f6accb5854a1b4e97570729f56b
 
 Package: com.receptor.downloadmanager
 Name: Receptor
@@ -197,11 +197,30 @@ Homepage: https://github.com/jajaengland/Receptor
 Depiction: https://jajaengland.github.io/repo/depictions/receptor.html
 Icon: file:///Applications/Receptor.app/Icon.png
 Architecture: iphoneos-arm
-Version: 1.6.0
+Version: 1.6.0b1
 Installed-Size: 2344
-Filename: debs/com.receptor.downloadmanager_1.6.0_iphoneos-arm.deb
-Size: 792662
-MD5sum: d92dccc8aeb973569a4fab6dabea8e5f
-SHA1: 2878eeed06b8969e525a59c9cea73f1f31cc213f
-SHA256: 8c18b2d513346c0a67abfbd3a01cf83f665d2f3224ffad90ac450c8364c0322d
+Filename: debs/com.receptor.downloadmanager_1.6.0b1_iphoneos-arm.deb
+Size: 792674
+MD5sum: 79f672269d0c298381499ddd8e7237c1
+SHA1: e9a54c67ee7718068f30609a6067ae9698c95b1f
+SHA256: 52a0682a8fdfe68aa0ae418fee0b8cbb6c54e61dd5dd2614e099fffabd71bdb8
+
+Package: com.receptor.downloadmanager
+Name: Receptor
+Description: Safari downloads and file browser for 32-bit iOS 4 through 8; iOS 7-8 support is experimental.
+Maintainer: Receptor
+Author: Receptor
+Section: Tweaks
+Depends: mobilesubstrate, dpkg, firmware (>= 4.0), firmware (<< 9.0)
+Homepage: https://github.com/jajaengland/Receptor
+Depiction: https://jajaengland.github.io/repo/depictions/receptor.html
+Icon: file:///Applications/Receptor.app/Icon.png
+Architecture: iphoneos-arm
+Version: 1.6.0b2
+Installed-Size: 2344
+Filename: debs/com.receptor.downloadmanager_1.6.0b2_iphoneos-arm.deb
+Size: 792934
+MD5sum: 0e3cd925897126817e04a0073a2be7cd
+SHA1: 81a8bff07ff9b5ccc659c6a9512c0330124bcd15
+SHA256: dcd7dec7060af8ae5156cd5ce5b6d6e94e5c6ea437a73d6100b898b696666366
 

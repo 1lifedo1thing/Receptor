@@ -58,7 +58,7 @@ namespace ReceptorDesktop {
         private readonly string staging = Path.Combine(Path.GetTempPath(), "Receptor-" + Guid.NewGuid().ToString("N"));
         private volatile bool stopped;
         private int pendingAdds;
-        private readonly string receiveFolder;
+        private volatile string receiveFolder;
         private readonly SemaphoreSlim receiving = new SemaphoreSlim(1, 1);
         private int receivedCount;
         public event Action<string> Status;
@@ -91,6 +91,13 @@ namespace ReceptorDesktop {
             } catch { if (item != null) item.Dispose(); throw; }
             finally {
                 lock (gate) { pendingAdds--; if (stopped && pendingAdds == 0) TryDeleteDirectory(); }
+            }
+        }
+        public void ConfigureReceiving(ReceiveOptions incoming) {
+            string folder = incoming != null && incoming.Enabled ? Path.GetFullPath(incoming.Folder) : null;
+            lock (gate) {
+                if (stopped) throw new IOException("Sharing has stopped.");
+                receiveFolder = folder;
             }
         }
         private void AcceptLoop() {
@@ -227,9 +234,11 @@ namespace ReceptorDesktop {
             return name;
         }
         private void ReceiveUpload(TcpClient client, Stream stream, Dictionary<string,string> headers, string nonce) {
+            // An active upload keeps its chosen destination; changes apply to new requests.
+            string destinationFolder = receiveFolder;
             string lengthText, digest, encoded, auth;
             long length;
-            if (receiveFolder == null) { Header(stream, 403, 0, null, "text/plain"); return; }
+            if (destinationFolder == null) { Header(stream, 403, 0, null, "text/plain"); return; }
             if (headers.ContainsKey("Transfer-Encoding") || !headers.TryGetValue("Content-Length", out lengthText) ||
                 !Regex.IsMatch(lengthText, @"^(0|[1-9][0-9]{0,9})$") || !Int64.TryParse(lengthText, out length) || length > 2147483647L ||
                 !headers.TryGetValue("X-Receptor-SHA256", out digest) || !Regex.IsMatch(digest, @"^[a-f0-9]{64}$") ||
@@ -247,8 +256,8 @@ namespace ReceptorDesktop {
             string partial = null;
             try {
                 client.ReceiveTimeout = 30000;
-                Directory.CreateDirectory(receiveFolder);
-                partial = Path.Combine(receiveFolder, ".receptor-receive-" + Guid.NewGuid().ToString("N") + ".part");
+                Directory.CreateDirectory(destinationFolder);
+                partial = Path.Combine(destinationFolder, ".receptor-receive-" + Guid.NewGuid().ToString("N") + ".part");
                 using (FileStream output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 using (SHA256 sha = SHA256.Create()) {
                     byte[] buffer = new byte[65536]; long remaining = length;
@@ -266,7 +275,7 @@ namespace ReceptorDesktop {
                     if (stopped) return;
                     for (int i = 0; i < 10000; i++) {
                         string candidate = i == 0 ? name : Path.GetFileNameWithoutExtension(name) + " (" + i + ")" + Path.GetExtension(name);
-                        string destination = Path.Combine(receiveFolder, candidate);
+                        string destination = Path.Combine(destinationFolder, candidate);
                         try { File.Move(partial, destination); saved = candidate; partial = null; break; }
                         catch (IOException) { if (!File.Exists(destination)) throw; }
                     }
