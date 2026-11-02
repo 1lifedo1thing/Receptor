@@ -29,6 +29,9 @@
 #define RC_STAGING_PARENT "/var/tmp"
 #define RC_CALLER_UID 501
 #define RC_APP_BINARY "/Applications/Receptor.app/ReceptorApp"
+#define RC_LAUNCHCTL_BINARY "/bin/launchctl"
+#define RC_DPKG_LOCK "/var/lib/dpkg/lock"
+#define RC_LOCK_OWNER 0
 #endif
 
 #define RC_MAX_LOG 65536
@@ -142,15 +145,51 @@ static int run_dpkg(const char *package, int simulate, int output) {
     return WIFEXITED(status) ? WEXITSTATUS(status) : 2;
 }
 
+/* Exactly two launchd jobs are allowed; no user-supplied commands or labels. */
+static int run_respring(int backboard) {
+    int lock = open(RC_DPKG_LOCK, O_RDWR | O_CREAT | O_NOFOLLOW, 0600);
+    struct stat info;
+    if (lock < 0) return fail("Cannot check the package-manager lock. Close Cydia and retry.");
+    cloexec(lock);
+    if (fstat(lock, &info) || !S_ISREG(info.st_mode) || info.st_uid != RC_LOCK_OWNER || info.st_nlink != 1 || (info.st_mode & 022)) {
+        close(lock); return fail("The package-manager lock has unexpected ownership or permissions.");
+    }
+    struct flock request;
+    memset(&request, 0, sizeof(request)); request.l_type = F_WRLCK; request.l_whence = SEEK_SET;
+    if (fcntl(lock, F_SETLK, &request) < 0) {
+        close(lock); return fail("The package manager is busy. Wait for installation to finish and close Cydia before respringing.");
+    }
+    fflush(stdout);
+    pid_t child = fork();
+    if (child < 0) { close(lock); return fail("Cannot start the respring request."); }
+    if (child == 0) {
+        int input = open("/dev/null", O_RDONLY);
+        if (input < 0 || dup2(input, STDIN_FILENO) < 0) _exit(126);
+        if (input > 2) close(input);
+        char *arguments[] = {RC_LAUNCHCTL_BINARY, "stop", backboard ? "com.apple.backboardd" : "com.apple.SpringBoard", NULL};
+        char *environment[] = {"PATH=/usr/bin:/bin:/usr/sbin:/sbin", "HOME=/var/root", "USER=root", "LOGNAME=root", "LANG=C", NULL};
+        execve(RC_LAUNCHCTL_BINARY, arguments, environment); _exit(127);
+    }
+    int status = 0; pid_t waited;
+    do { waited = waitpid(child, &status, 0); } while (waited < 0 && errno == EINTR);
+    close(lock);
+    int result = waited == child && WIFEXITED(status) ? WEXITSTATUS(status) : 2;
+    if (result) fprintf(stderr, "Receptor: launchctl could not request a respring (status %d).\n", result);
+    return result;
+}
+
 int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN); // A disappearing UI must not kill a package transaction.
     umask(077);
-    if (argc != 2 || !valid_name(argv[1])) return fail("Invalid staged package name.");
+    if (argc != 2) return fail("Invalid helper arguments.");
+    int respring = strcmp(argv[1], "--respring") == 0 || strcmp(argv[1], "--respring-backboard") == 0;
+    if (!respring && !valid_name(argv[1])) return fail("Invalid staged package name.");
 #ifndef RC_HELPER_TEST
     if (geteuid() != 0) return fail("Root helper is not enabled. Reinstall Receptor through Cydia.");
     if (getuid() != 0 && (getuid() != RC_CALLER_UID || !authorized_parent())) return fail("This installer can only be started by Receptor.");
     if (setgroups(0, NULL) || setgid(0) || setuid(0)) return fail("Unable to acquire package-manager privileges.");
 #endif
+    if (respring) return run_respring(strcmp(argv[1], "--respring-backboard") == 0);
     struct stat info;
     int directory = open(RC_DOWNLOADS_DIR, O_RDONLY | O_NOFOLLOW);
     if (directory < 0) return fail("Download directory is unavailable.");

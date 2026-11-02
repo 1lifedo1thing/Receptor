@@ -6,16 +6,16 @@ Version: 1.0
 Architectures: iphoneos-arm
 Components: main
 Description: Receptor downloads for legacy iOS 4 through 6
-Date: Sun, 01 Nov 2026 16:46:12 GMT
+Date: Mon, 02 Nov 2026 19:30:56 GMT
 MD5Sum:
- 97bba883eac2aed1166f2723b6d5b0c1 8957 Packages
- acc8ae2401a2f71073f597b6b3ac5ea8 1806 Packages.gz
- c8cf7a73b15e3eb294e5796d1ad95a1e 2014 Packages.bz2
+ 17fe0709125da7b8bec1498bcf887200 9720 Packages
+ cb256b207908eb2d97cb80a85d257ad5 1919 Packages.gz
+ 8bb81763927e9ad22bc02296c10597a8 2151 Packages.bz2
 SHA1:
- 1e5f095f561c4329cf2b46a6b0df507ef84686f7 8957 Packages
- 0966e05744d6f097a71a3f68ef69a3b08d2e2fb9 1806 Packages.gz
- 2ac1eec6cb95bd4b07ec15737b4cd763d823df17 2014 Packages.bz2
+ 8d4b12c2a1a0e8bdd5642c38a59f8fce8439b627 9720 Packages
+ 7aae5b3b6d5eead218a2c5a24fe386136759302a 1919 Packages.gz
+ 76bc09c29bdc983d5888820a482284020f6bc74a 2151 Packages.bz2
 SHA256:
- 17edea1cc24c2e091c7d93c801b72189219310aaa55e52f2ea6d8471a3922f83 8957 Packages
- 20a573f9c3e5e609c9b50a04f37d7f6a74559b4a80294a41ea2dd1ad06ca1bf6 1806 Packages.gz
- 76ec88ae21522f3b477331f580a2783ec5d90771e22a0a8e64a033a94f8ae184 2014 Packages.bz2
+ f0bf1dc89cb4ce8bad898b5bd3b29b357106bb0e1457d7d20d62ea0310a58e0a 9720 Packages
+ 893c0c9a969731bd6f03ca921d05ffc9c1042723bb819573e6b1b8103b41d549 1919 Packages.gz
+ b9789c1adbca0815ae2db20ff7b26bcc558e2055fa8d95fd5025cb576fcced6a 2151 Packages.bz2

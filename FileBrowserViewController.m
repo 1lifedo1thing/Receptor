@@ -4,6 +4,7 @@
 #import "DownloadManager.h"
 #import "RCIPAInstaller.h"
 #import "RCDEBInstaller.h"
+#import "RCRespring.h"
 #import "RCCompanionViewController.h"
 #import "RCSendFileViewController.h"
 #import "RCFileArtwork.h"
@@ -85,11 +86,11 @@ static BOOL RCInstallingPackage(void) {
         UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
     UIBarButtonItem *log = [[[UIBarButtonItem alloc] initWithTitle:@"Install Log" style:UIBarButtonItemStylePlain
         target:self action:@selector(showInstallLog)] autorelease];
-    UIBarButtonItem *cydia = [[[UIBarButtonItem alloc] initWithTitle:@"Cydia" style:UIBarButtonItemStylePlain
-        target:self action:@selector(openCydia)] autorelease];
+    UIBarButtonItem *respring = [[[UIBarButtonItem alloc] initWithTitle:@"Respring" style:UIBarButtonItemStylePlain
+        target:[RCRespring sharedController] action:@selector(requestRespring)] autorelease];
     UIBarButtonItem *desktop = [[[UIBarButtonItem alloc] initWithTitle:@"Desktop" style:UIBarButtonItemStylePlain
         target:self action:@selector(openDesktop)] autorelease];
-    self.toolbarItems = [NSArray arrayWithObjects:refresh, log, space, desktop, cydia, nil];
+    self.toolbarItems = [NSArray arrayWithObjects:refresh, log, space, desktop, respring, nil];
     [self reloadFiles];
 }
 - (void)viewWillAppear:(BOOL)animated {
@@ -135,6 +136,10 @@ static BOOL RCInstallingPackage(void) {
     }
     UIViewController *controller = [[UIViewController alloc] init];
     controller.title = @"DEB Install Log";
+    UIBarButtonItem *respring = [[[UIBarButtonItem alloc] initWithTitle:@"Respring" style:UIBarButtonItemStylePlain target:[RCRespring sharedController] action:@selector(requestRespring)] autorelease];
+    UIBarButtonItem *space = [[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
+    UIBarButtonItem *cydia = [[[UIBarButtonItem alloc] initWithTitle:@"Cydia" style:UIBarButtonItemStylePlain target:self action:@selector(openCydia)] autorelease];
+    controller.toolbarItems = [NSArray arrayWithObjects:respring, space, cydia, nil];
     UITextView *text = [[UITextView alloc] initWithFrame:self.view.bounds];
     text.editable = NO;
     text.font = [UIFont fontWithName:@"Courier" size:12.0f];

@@ -2,6 +2,7 @@
 #import "RCIPAInstaller.h"
 #import "ReceptorPaths.h"
 #import "ReceptorUI.h"
+#import "RCRespring.h"
 #include <spawn.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -50,6 +51,7 @@ static BOOL RCDebCreatePipe(int descriptors[2]) {
 }
 - (void)installFileNamed:(NSString *)name {
     NSAssert([NSThread isMainThread], @"Main thread required");
+    if ([[RCRespring sharedController] busy]) { [[ReceptorUI sharedUI] showMessage:@"A respring has been requested. Wait for it to finish before installing."]; return; }
     if (_busy || [[RCIPAInstaller sharedInstaller] busy]) { [[ReceptorUI sharedUI] showMessage:@"An installation is already running."]; return; }
     if (!RCIsRegularDownload(name) || ![[[name pathExtension] lowercaseString] isEqual:@"deb"]) {
         [[ReceptorUI sharedUI] showMessage:@"Choose a saved DEB file."]; return;
@@ -151,7 +153,7 @@ static BOOL RCDebCreatePipe(int descriptors[2]) {
         [[UIApplication sharedApplication] endBackgroundTask:task];
     }
     NSString *message = [[completion objectForKey:@"result"] intValue] == 0 ?
-        [NSString stringWithFormat:@"Installed %@. Reopen Cydia and check Installed. Respring if the package requires it.", [completion objectForKey:@"name"]] :
+        [NSString stringWithFormat:@"Installed %@. Reopen Cydia and check Installed. If the package requires a respring, use Respring in the Files toolbar or Install Log. Receptor does not automatically determine whether one is required.", [completion objectForKey:@"name"]] :
         @"The DEB installation did not complete. Tap Install Log for the package-manager output. Close Cydia if its database is locked; install missing dependencies through Cydia and retry. No force options were used.";
     [[ReceptorUI sharedUI] showMessage:message];
 }

@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import fcntl
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -53,7 +54,22 @@ if not simulate:
 ''')
         fake.chmod(0o755)
         helper = base / "helper"
+        launch_record = base / "launch.json"
+        launchctl = base / "fake-launchctl"
+        launchctl.write_text("#!/usr/bin/python3 -I\n" + f"RECORD={str(launch_record)!r}\nCONFIG={str(config)!r}\n" + r'''
+import json, os, pathlib, sys
+assert 'RC_INJECTED' not in os.environ and 'DPKG_ROOT' not in os.environ
+assert sys.stdin.read() == ''
+assert sys.argv[1:] in [['stop', 'com.apple.SpringBoard'], ['stop', 'com.apple.backboardd']]
+pathlib.Path(RECORD).write_text(json.dumps(sys.argv[1:]))
+sys.exit(json.loads(pathlib.Path(CONFIG).read_text()).get('launchctl_failure', 0))
+''')
+        launchctl.chmod(0o755)
+        package_lock = base / "dpkg.lock"
         definitions = ["-DRC_HELPER_TEST=1", f"-DRC_CALLER_UID={os.getuid()}",
+                       f"-DRC_LOCK_OWNER={os.getuid()}",
+                       '-DRC_LAUNCHCTL_BINARY="' + str(launchctl) + '"',
+                       '-DRC_DPKG_LOCK="' + str(package_lock) + '"',
                        '-DRC_DOWNLOADS_DIR="' + str(downloads) + '"',
                        '-DRC_DPKG_BINARY="' + str(fake) + '"',
                        '-DRC_STAGING_PARENT="' + str(private) + '"']
@@ -131,6 +147,29 @@ if not simulate:
         output = run(name, 0)
         assert "FINAL-LOG-MARKER" in output and len(output) < 66000
         print("PASS: shell metacharacters remain data; output is bounded and includes the log tail")
+        reset()
+        run('--respring', 0)
+        assert json.loads(launch_record.read_text()) == ['stop', 'com.apple.SpringBoard']
+        run('--respring-backboard', 0)
+        assert json.loads(launch_record.read_text()) == ['stop', 'com.apple.backboardd']
+        assert not record.exists(), 'Respring must not run dpkg'
+        reset({'launchctl_failure': 23})
+        assert 'status 23' in run('--respring', 23)
+        launch_record.unlink()
+        reset()
+        with package_lock.open('r+') as held:
+            fcntl.lockf(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            assert 'busy' in run('--respring', 2)
+        assert not launch_record.exists()
+        for bad in ['--respring=anything', '--respring;reboot', '--respring-backboard/other']:
+            run(bad, 2)
+        package_lock.chmod(0o666)
+        run('--respring', 2)
+        package_lock.unlink()
+        package_lock.symlink_to(path)
+        run('--respring', 2)
+        assert not launch_record.exists()
+        print('PASS: fixed respring job arguments, sanitized environment, native failures, dpkg lock contention and unsafe lock paths; no real host services touched')
     print("Device-only setuid/caller-code-hash authorization and real iOS dpkg still require on-device testing.")
 
 
