@@ -1,5 +1,6 @@
 #import "RCRespring.h"
 #import "RCDEBInstaller.h"
+#import "RCPackageManager.h"
 #import "RCIPAInstaller.h"
 #import "DownloadManager.h"
 #import "ReceptorUI.h"
@@ -26,7 +27,7 @@
 - (void)requestRespring {
     NSAssert([NSThread isMainThread], @"Main thread required");
     if (_prompt || _busy) return;
-    if ([[RCDEBInstaller sharedInstaller] busy] || [[RCIPAInstaller sharedInstaller] busy]) {
+    if ([[RCDEBInstaller sharedInstaller] busy] || [[RCIPAInstaller sharedInstaller] busy] || [[RCPackageManager sharedManager] busy]) {
         [[ReceptorUI sharedUI] showMessage:@"Wait for the installation to finish before respringing."]; return;
     }
     _prompt = [[UIAlertView alloc] initWithTitle:@"Respring?" message:@"Restart the Home and lock-screen interface now? Close Cydia and finish transfers first. Apps and transfers may be interrupted. This does not reboot the iPad or iPhone." delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Respring", nil];
@@ -36,7 +37,7 @@
     if (alert != _prompt) return;
     [_prompt autorelease]; _prompt = nil;
     if (index != 1 || [UIApplication sharedApplication].applicationState != UIApplicationStateActive) return;
-    if ([[RCDEBInstaller sharedInstaller] busy] || [[RCIPAInstaller sharedInstaller] busy] || [[[DownloadManager sharedManager] activeDownloads] count]) {
+    if ([[RCDEBInstaller sharedInstaller] busy] || [[RCIPAInstaller sharedInstaller] busy] || [[RCPackageManager sharedManager] busy] || [[[DownloadManager sharedManager] activeDownloads] count]) {
         [[ReceptorUI sharedUI] showMessage:@"Finish installations and downloads before respringing."]; return;
     }
     _busy = YES;

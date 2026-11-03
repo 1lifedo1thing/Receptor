@@ -3,6 +3,7 @@
 #import "ReceptorPaths.h"
 #import "ReceptorUI.h"
 #import "RCRespring.h"
+#import "RCPackageManager.h"
 #include <spawn.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -52,7 +53,7 @@ static BOOL RCDebCreatePipe(int descriptors[2]) {
 - (void)installFileNamed:(NSString *)name {
     NSAssert([NSThread isMainThread], @"Main thread required");
     if ([[RCRespring sharedController] busy]) { [[ReceptorUI sharedUI] showMessage:@"A respring has been requested. Wait for it to finish before installing."]; return; }
-    if (_busy || [[RCIPAInstaller sharedInstaller] busy]) { [[ReceptorUI sharedUI] showMessage:@"An installation is already running."]; return; }
+    if (_busy || [[RCIPAInstaller sharedInstaller] busy] || [[RCPackageManager sharedManager] busy]) { [[ReceptorUI sharedUI] showMessage:@"An installation or package operation is already running."]; return; }
     if (!RCIsRegularDownload(name) || ![[[name pathExtension] lowercaseString] isEqual:@"deb"]) {
         [[ReceptorUI sharedUI] showMessage:@"Choose a saved DEB file."]; return;
     }

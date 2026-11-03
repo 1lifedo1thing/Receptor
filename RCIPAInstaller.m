@@ -3,6 +3,7 @@
 #import "ReceptorUI.h"
 #import "RCDEBInstaller.h"
 #import "RCRespring.h"
+#import "RCPackageManager.h"
 #import "RCIPAArchive.h"
 #include <stdlib.h>
 #include <string.h>
@@ -68,7 +69,7 @@ static void RCInstallProgress(CFDictionaryRef information) {
 - (void)installFileNamed:(NSString *)name {
     if ([[RCRespring sharedController] busy]) { [[ReceptorUI sharedUI] showMessage:@"A respring has been requested. Wait for it to finish before installing."]; return; }
     NSAssert([NSThread isMainThread], @"Main thread required");
-    if (_busy || [[RCDEBInstaller sharedInstaller] busy]) { [[ReceptorUI sharedUI] showMessage:@"An installation is already running."]; return; }
+    if (_busy || [[RCDEBInstaller sharedInstaller] busy] || [[RCPackageManager sharedManager] busy]) { [[ReceptorUI sharedUI] showMessage:@"An installation or package operation is already running."]; return; }
     if (!RCIsRegularDownload(name) || ![[[name pathExtension] lowercaseString] isEqual:@"ipa"]) {
         [[ReceptorUI sharedUI] showMessage:@"Choose a saved IPA file."]; return;
     }

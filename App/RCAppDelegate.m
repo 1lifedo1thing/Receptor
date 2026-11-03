@@ -1,6 +1,7 @@
 #import "RCAppDelegate.h"
 #import "../FileBrowserViewController.h"
 #import "../RCFilesystemViewController.h"
+#import "../RCPackagesViewController.h"
 #import "../ReceptorUI.h"
 #import "../ReceptorPaths.h"
 
@@ -25,7 +26,10 @@
     systemNavigation.tabBarItem = [[[UITabBarItem alloc] initWithTabBarSystemItem:UITabBarSystemItemBookmarks tag:1] autorelease];
     systemNavigation.tabBarItem.title = @"Filesystem";
     UITabBarController *tabs = [[UITabBarController alloc] init];
-    tabs.viewControllers = [NSArray arrayWithObjects:navigation, systemNavigation, nil];
+    RCPackagesViewController *packages = [[RCPackagesViewController alloc] initWithMode:@"root" item:nil];
+    UINavigationController *packageNavigation = [[UINavigationController alloc] initWithRootViewController:packages]; [packages release];
+    packageNavigation.tabBarItem = [[[UITabBarItem alloc] initWithTabBarSystemItem:UITabBarSystemItemMore tag:2] autorelease]; packageNavigation.tabBarItem.title = @"Packages";
+    tabs.viewControllers = [NSArray arrayWithObjects:navigation, systemNavigation, packageNavigation, nil]; [packageNavigation release];
     _window.rootViewController = tabs;
     [tabs release]; [systemNavigation release];
     [navigation release];

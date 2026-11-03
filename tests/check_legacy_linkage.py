@@ -42,3 +42,5 @@ def inspect(path):
 if __name__ == '__main__':
     inspect(ROOT / 'build/Receptor.dylib')
     inspect(ROOT / 'build/Receptor.app/ReceptorApp')
+    package_helper = ROOT / 'build/receptor-package-helper'
+    if package_helper.exists(): inspect(package_helper)

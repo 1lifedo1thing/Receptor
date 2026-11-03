@@ -2,5 +2,7 @@
 set -e
 chown 0:0 /usr/libexec/receptor-deb-helper
 chmod 4755 /usr/libexec/receptor-deb-helper
+chown 0:0 /usr/libexec/receptor-package-helper
+chmod 4755 /usr/libexec/receptor-package-helper
 if command -v uicache >/dev/null 2>&1; then uicache || true; fi
 exit 0

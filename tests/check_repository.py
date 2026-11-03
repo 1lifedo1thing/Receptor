@@ -78,6 +78,22 @@ def main():
                         minimum = struct.unpack_from("<II", binary, offset + 8)
                     offset += size
                 assert minimum == (0x40000, 0x50000)
+            if "usr/libexec/receptor-package-helper" in payload:
+                name = "usr/libexec/receptor-package-helper"
+                helper = members_info[name]
+                assert helper.uid == 0 and helper.gid == 0 and helper.mode == 0o4755
+                binary = payload[name]
+                assert struct.unpack_from("<III", binary) == (0xfeedface, 12, 9)
+                assert b"csops" in binary and b"/Applications/Receptor.app/ReceptorApp" in binary
+                assert b"/usr/bin/apt-get" in binary and b"/usr/bin/apt-cache" in binary
+                assert b"receptor-packages.lock" in binary and b"last-operation.plist" in binary
+                assert b"RC_PKG_TEST_ROOT" not in binary
+                count = struct.unpack_from("<I", binary, 16)[0]; offset = 28; minimum = None
+                for _ in range(count):
+                    command, size = struct.unpack_from("<II", binary, offset)
+                    if command == 0x25: minimum = struct.unpack_from("<II", binary, offset + 8)
+                    offset += size
+                assert minimum == (0x40000, 0x50000)
             if "usr/libexec/receptor-deb-helper" in payload:
                 helper_name = "usr/libexec/receptor-deb-helper"
                 helper = members_info[helper_name]

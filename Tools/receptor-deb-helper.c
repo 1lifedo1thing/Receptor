@@ -32,6 +32,7 @@
 #define RC_LAUNCHCTL_BINARY "/bin/launchctl"
 #define RC_DPKG_LOCK "/var/lib/dpkg/lock"
 #define RC_LOCK_OWNER 0
+#define RC_OPERATION_LOCK "/var/tmp/receptor-packages.lock"
 #endif
 
 #define RC_MAX_LOG 65536
@@ -189,6 +190,11 @@ int main(int argc, char **argv) {
     if (getuid() != 0 && (getuid() != RC_CALLER_UID || !authorized_parent())) return fail("This installer can only be started by Receptor.");
     if (setgroups(0, NULL) || setgid(0) || setuid(0)) return fail("Unable to acquire package-manager privileges.");
 #endif
+    int operation_lock = open(RC_OPERATION_LOCK, O_RDWR | O_CREAT | O_NOFOLLOW, 0600);
+    struct stat lock_info;
+    if (operation_lock < 0 || fstat(operation_lock, &lock_info) || !S_ISREG(lock_info.st_mode) || lock_info.st_nlink != 1 ||
+        lock_info.st_uid != geteuid() || (lock_info.st_mode & 022) || flock(operation_lock, LOCK_EX | LOCK_NB)) return fail("Another package operation is running or its lock is unsafe.");
+    cloexec(operation_lock); // Held until this helper exits, including across its dpkg/launchctl children.
     if (respring) return run_respring(strcmp(argv[1], "--respring-backboard") == 0);
     struct stat info;
     int directory = open(RC_DOWNLOADS_DIR, O_RDONLY | O_NOFOLLOW);

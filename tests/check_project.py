@@ -49,6 +49,8 @@ def main():
     sources = next(line.split("=", 1)[1].split() for line in makefile.splitlines()
                    if line.startswith("Receptor_FILES ="))
     assert all((root / name).is_file() for name in sources)
+    app_sources = next(line.split("=", 1)[1].split() for line in makefile.splitlines() if line.startswith("ReceptorApp_FILES ="))
+    assert all((root / name).is_file() for name in app_sources)
     assert "iphone:clang:5.0:4.0" in makefile and "-fno-objc-arc" in makefile
     app = plistlib.loads((root / "App/Info.plist").read_bytes())
     assert app["CFBundleIdentifier"] == "com.receptor.app"

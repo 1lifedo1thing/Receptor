@@ -68,6 +68,7 @@ sys.exit(json.loads(pathlib.Path(CONFIG).read_text()).get('launchctl_failure', 0
         package_lock = base / "dpkg.lock"
         definitions = ["-DRC_HELPER_TEST=1", f"-DRC_CALLER_UID={os.getuid()}",
                        f"-DRC_LOCK_OWNER={os.getuid()}",
+                       '-DRC_OPERATION_LOCK="' + str(base / 'operations.lock') + '"',
                        '-DRC_LAUNCHCTL_BINARY="' + str(launchctl) + '"',
                        '-DRC_DPKG_LOCK="' + str(package_lock) + '"',
                        '-DRC_DOWNLOADS_DIR="' + str(downloads) + '"',
