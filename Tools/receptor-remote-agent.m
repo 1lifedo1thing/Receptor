@@ -60,7 +60,9 @@ static NSDictionary *Exchange(NSDictionary *config,NSDictionary *message) {
     curl_easy_setopt(curl,CURLOPT_XFERINFODATA,[Private(@"remote.plist") fileSystemRepresentation]);
     CURLcode code=curl_easy_perform(curl); long status=0; curl_easy_getinfo(curl,CURLINFO_RESPONSE_CODE,&status); curl_easy_cleanup(curl); curl_slist_free_all(headers);
     BOOL authenticated=!response.bad && RCRemoteEqual(response.auth,RCRemoteMAC(seed,@"response",device,nonce,response.body)); [response.auth release];
-    Check(code==CURLE_OK && status==200 && authenticated,@"PC unavailable, access disabled, pairing reset or response authentication failed.");
+    Check(code==CURLE_OK,[NSString stringWithFormat:@"Background connection failed (curl %d: %s). Check PC sharing, the saved address and Wi-Fi.",(int)code,curl_easy_strerror(code)]);
+    Check(status==200,status==403?@"PC rejected background access. Connect / Refresh in Desktop, then enable background access again. Check the PC background-access checkbox.":[NSString stringWithFormat:@"PC returned HTTP %ld to the background connection. Check the PC address and sharing.",status]);
+    Check(authenticated,@"PC response authentication failed. Connect / Refresh in Desktop and enable background access again after comparing the PC key.");
     NSData *decoded=RCRemoteDecrypt(seed,response.body); Check(decoded!=nil,@"Cannot decrypt the PC response.");
     id result=[NSPropertyListSerialization propertyListWithData:decoded options:NSPropertyListImmutable format:NULL error:&error]; Check([result isKindOfClass:[NSDictionary class]],@"Invalid PC response."); return result;
 }
@@ -82,7 +84,7 @@ int main(int argc,char **argv) {
         if(!RCRemoteRead(Private(@"remote.plist"))) { [startup drain]; return 0; }
         instance=open([Private(@"remote-agent.lock") fileSystemRepresentation],O_RDWR|O_CREAT|O_NOFOLLOW,0600); struct stat info;
         Check(instance>=0 && !fstat(instance,&info) && S_ISREG(info.st_mode) && info.st_nlink==1 && info.st_uid==geteuid() && !(info.st_mode&077) && !flock(instance,LOCK_EX|LOCK_NB),@"Background service is already running or its lock is unsafe."); fcntl(instance,F_SETFD,FD_CLOEXEC);
-    } @catch(NSException *exception) { if(instance>=0)close(instance); [startup drain]; return 2; }
+    } @catch(NSException *exception) { @try { NSDictionary *config=RCRemoteRead(Private(@"remote.plist")); if(config)RCRemoteSave(Private(@"remote-status.plist"),[NSDictionary dictionaryWithObjectsAndKeys:[config objectForKey:@"device"],@"device",[NSDate date],@"updated",@"Background service could not initialize its private state or instance lock. Reinstall Receptor through Cydia, then retry.",@"message",nil]); } @catch(NSException *ignored) { (void)ignored; } if(instance>=0)close(instance); [startup drain]; return 2; }
     struct stat started; BOOL tracked=lstat([RCRemotePath(@"/usr/libexec/receptor-remote-agent") fileSystemRepresentation],&started)==0;
     curl_global_init(CURL_GLOBAL_DEFAULT); [startup drain]; NSString *session=nil,*identity=nil,*lastPeer=nil; long long counter=0; int backoff=2;
     while(!stopping) {
@@ -101,20 +103,21 @@ int main(int argc,char **argv) {
                 [message setObject:[NSDictionary dictionaryWithObjectsAndKeys:[last objectForKey:@"id"],@"id",[last objectForKey:@"body"],@"body",nil] forKey:@"reply"];
             }
             NSDictionary *version=[NSDictionary dictionaryWithContentsOfFile:@"/System/Library/CoreServices/SystemVersion.plist"]; if([[version objectForKey:@"ProductVersion"] isKindOfClass:[NSString class]])[message setObject:[version objectForKey:@"ProductVersion"] forKey:@"os"];
+            if(!session)RCRemoteSave(Private(@"remote-status.plist"),[NSDictionary dictionaryWithObjectsAndKeys:device,@"device",[NSDate date],@"updated",@"Connecting to the PC…",@"message",nil]);
             NSDictionary *response=Exchange(config,message); NSString *peer=[response objectForKey:@"session"];
             Check([peer isKindOfClass:[NSString class]] && [peer length]==32,@"Invalid PC session.");
             long long floor=[[response objectForKey:@"counterFloor"] longLongValue]; if(floor>counter)counter=floor;
             BOOL changed=![lastPeer isEqual:peer]; [session release]; session=[peer copy]; [lastPeer release]; lastPeer=[peer copy];
             if(changed) (void)RCRemoteInvoke([NSDictionary dictionaryWithObjectsAndKeys:@"files",@"op",@"abort",@"action",nil]);
             if([[response objectForKey:@"ack"] isEqual:[last objectForKey:@"id"]]) unlink([Private(@"remote-last-job.plist") fileSystemRepresentation]);
-            RCRemoteSave(Private(@"remote-status.plist"),[NSDictionary dictionaryWithObjectsAndKeys:device,@"device",[NSDate date],@"lastConnected",@"Connected",@"message",nil]); backoff=2;
+            RCRemoteSave(Private(@"remote-status.plist"),[NSDictionary dictionaryWithObjectsAndKeys:device,@"device",[NSDate date],@"lastConnected",[NSDate date],@"updated",@"Connected",@"message",nil]); backoff=2;
             NSDictionary *command=[response objectForKey:@"command"];
             if(command) { Check([command isKindOfClass:[NSDictionary class]],@"Invalid command."); (void)Process(command,session,config); }
         } @catch(NSException *exception) {
 #ifdef RC_REMOTE_HOST_TEST
             fprintf(stderr,"Remote fixture: %s\n",[[exception reason] UTF8String]); fflush(stderr);
 #endif
-            @try { RCRemoteSave(Private(@"remote-status.plist"),[NSDictionary dictionaryWithObjectsAndKeys:identity?:@"",@"device",@"Waiting for the PC. Check sharing, Wi-Fi and its saved pairing.",@"message",nil]); } @catch(NSException *ignored) { (void)ignored; }
+            @try { RCRemoteSave(Private(@"remote-status.plist"),[NSDictionary dictionaryWithObjectsAndKeys:identity?:@"",@"device",[NSDate date],@"updated",[exception reason]?:@"Waiting for the PC. Check sharing, Wi-Fi and its saved pairing.",@"message",nil]); } @catch(NSException *ignored) { (void)ignored; }
             [session release]; session=nil;
             for(int i=0;i<backoff && !stopping;i++)sleep(1); backoff=MIN(30,backoff*2);
         }

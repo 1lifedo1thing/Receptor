@@ -1,16 +1,22 @@
-# Background desktop access: 1.8.0 beta 1
+# Background desktop access: 1.8.0 beta 2
 
 This beta needs physical-device testing. Host tests cover the production native agent, Windows broker, crypto, file helper and setup validation, using disposable credentials and fake package commands. They do not establish that launchd, locked Wi-Fi, root/mobile permissions or APT work on every supported jailbreak.
 
 ## One-time setup
 
-1. Update Receptor to **1.8.0b1** and use **ReceptorDesktop.exe 1.8.0 beta 1**. Keep Cydia closed during package operations.
+1. Update Receptor to **1.8.0b2** and use **ReceptorDesktop.exe 1.8.0 beta 1** (unchanged). Keep Cydia closed during package operations.
 2. On Windows, enable **Allow background device access** and **Start sharing**. Open **Manage device…** to see the PC key fingerprint.
 3. In Receptor → **Desktop**, connect/refresh using your saved pairing (or pair once with the address/code).
 4. Open **Background desktop access…**, tap Enable and compare the displayed PC key with Windows. Confirm only the intended PC.
 5. Leave Receptor or lock the device. Keep the Windows companion running and sharing enabled. In **Manage device…**, select the device, then use Packages, Sources or Files. Files exposes only `/var/mobile/Media/Receptor/`, not the Filesystem tab.
 
 The grant authorizes the paired PC to install/remove packages, edit sources, request a respring and transfer download-folder files without touching the iPad again, including while locked. APT plans still require confirmation on the PC. It persists across app closure and reboots until revoked. Do not enable it on a shared or untrusted PC. No root password or arbitrary remote shell is exposed.
+
+## If Windows says no background device is connected
+
+Beta 1's enabled label only meant that permission was saved. It relied on the launchd PathState trigger and did not explicitly load/start the service when enabling. Beta 2 adds fixed launchctl load/start calls, refreshed status and network/authentication diagnostics. It does not establish the cause of every connection failure.
+
+For an existing grant, open Background desktop access and tap **Restart service / Retry connection** once. This does not kill/restart a running agent or package operation. Wait up to 30 seconds, then read the text **below the buttons**. The top label now says **Background permission saved**, not connected. Capture the diagnostic text and exact iOS/device if it still fails. A PC rejection requires checking the Windows background checkbox, Connect / Refresh, then enabling the grant again. A stopped/unloaded service or failed load/start is reported separately. Recent diagnostic messages must match this grant; stale status from an earlier grant is ignored.
 
 ## Device checklist
 

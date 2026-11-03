@@ -12,9 +12,11 @@
     if((self=[super initWithStyle:UITableViewStyleGrouped])) { _publicKey=[key copy]; _host=[host copy]; _message=[@"Loading background access status…" copy]; } return self;
 }
 - (void)viewDidLoad { [super viewDidLoad]; self.title=@"Background access"; [self run:[NSArray arrayWithObject:@"remote-status"]]; }
-- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self.navigationController setToolbarHidden:YES animated:animated]; }
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self.navigationController setToolbarHidden:YES animated:animated]; if(!_refreshTimer)_refreshTimer=[[NSTimer scheduledTimerWithTimeInterval:5 target:self selector:@selector(refreshStatus:) userInfo:nil repeats:YES] retain]; }
+- (void)viewWillDisappear:(BOOL)animated { [_refreshTimer invalidate]; [_refreshTimer release]; _refreshTimer=nil; [super viewWillDisappear:animated]; }
+- (void)refreshStatus:(NSTimer *)timer { (void)timer; if(!_prompt && ![[RCPackageManager sharedManager] busy])[[RCPackageManager sharedManager] run:[NSArray arrayWithObject:@"remote-status"] delegate:self]; }
 - (void)run:(NSArray *)arguments { if([[RCPackageManager sharedManager] run:arguments delegate:self]) { [_message release]; _message=[@"Updating background access…" copy]; [self.tableView reloadData]; } }
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { (void)tableView;(void)section;return 3; }
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { (void)tableView;(void)section;return 4; }
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)index { (void)tableView;return index.row==0?80:50; }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     (void)tableView;(void)section;
@@ -22,14 +24,15 @@
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)index {
     (void)tableView; UITableViewCell *cell=[[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil] autorelease];
-    if(index.row==0) { BOOL enabled=[[_status objectForKey:@"enabled"] boolValue]; cell.textLabel.text=enabled?@"Background access enabled":@"Background access disabled";
+    if(index.row==0) { BOOL enabled=[[_status objectForKey:@"enabled"] boolValue]; cell.textLabel.text=enabled?@"Background permission saved":@"Background access disabled";
         NSString *device=[_status objectForKey:@"device"]; cell.detailTextLabel.numberOfLines=2; cell.detailTextLabel.text=enabled?[NSString stringWithFormat:@"%@\nDevice %@",[_status objectForKey:@"host"],device?[device substringToIndex:MIN((NSUInteger)8,[device length])]:@""]:@"Requires one-time approval here before desktop control."; cell.selectionStyle=UITableViewCellSelectionStyleNone;
-    } else { cell.textLabel.text=index.row==1?@"Enable for the paired PC…":@"Disable background access"; cell.textLabel.textColor=[[RCPackageManager sharedManager] busy]?[UIColor grayColor]:[UIColor colorWithRed:0 green:0.35 blue:0.8 alpha:1]; }
+    } else { cell.textLabel.text=index.row==1?@"Enable for the paired PC…":index.row==2?@"Disable background access":@"Restart service / Retry connection"; cell.textLabel.textColor=[[RCPackageManager sharedManager] busy]?[UIColor grayColor]:[UIColor colorWithRed:0 green:0.35 blue:0.8 alpha:1]; }
     return cell;
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)index {
     [tableView deselectRowAtIndexPath:index animated:YES]; if(index.row==0 || _prompt || [[RCPackageManager sharedManager] busy])return;
     if(index.row==2) { [self run:[NSArray arrayWithObject:@"remote-disable"]]; return; }
+    if(index.row==3) { [self run:[NSArray arrayWithObject:@"remote-start"]]; return; }
     NSDictionary *saved=[RCCompanionClient savedConnection]; NSString *fingerprint=RCRemoteFingerprint(_publicKey);
     if(!saved || ![[saved objectForKey:@"host"] isEqual:_host] || !fingerprint) { [[ReceptorUI sharedUI] showMessage:@"On the PC, enable background device access in Desktop 1.8.0 and start sharing. Return to Desktop in Receptor, Connect / Refresh successfully, then open this screen again."]; return; }
     _prompt=[[UIAlertView alloc] initWithTitle:@"Trust this PC in the background?" message:[NSString stringWithFormat:@"%@\nPC key: %@\n\nCompare this key with the PC. This PC will be able to install/remove packages, change sources, respring and transfer files in Receptor’s folder while this app is closed or the device is locked. Desktop confirmations replace on-device confirmations until you disable access.",_host,[fingerprint substringToIndex:16]] delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Enable access",nil]; [_prompt show];
@@ -57,6 +60,7 @@
 }
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)orientation { return UI_USER_INTERFACE_IDIOM()==UIUserInterfaceIdiomPad || orientation!=UIInterfaceOrientationPortraitUpsideDown; }
 - (void)dealloc {
+    [_refreshTimer invalidate]; [_refreshTimer release];
     if([RCPackageManager sharedManager].delegate==self)[RCPackageManager sharedManager].delegate=nil;
     _prompt.delegate=nil; [_prompt dismissWithClickedButtonIndex:0 animated:NO]; [_prompt release];
     [_publicKey release]; [_host release]; [_message release]; [_status release]; [_staged release]; [super dealloc];

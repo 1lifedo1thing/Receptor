@@ -125,6 +125,7 @@ sys.stdout.buffer.write(plistlib.dumps(result))
             plan=query(pkg('plan-install','example.tweak'));assert len(plan['token'])==64
             assert query(pkg('apply-install','example.tweak',plan['token']))['status']==0
             assert 'error' in query(pkg('remote-enable','anything'))
+            assert 'error' in query(pkg('remote-start'))
             assert 'error' in query({'op':'shell','command':'touch SENTINEL'})
             print('PASS: real native agent polls the actual desktop broker, runs only fixed helpers and reports package previews/results without a foreground app')
             payload=os.urandom(190000);name='snowman \u2603.bin'
@@ -169,6 +170,15 @@ sys.stdout.buffer.write(plistlib.dumps(result))
             assert 'uncertain' in result.get('error','').lower()
             time.sleep(1);calls=json.loads((fixture/'calls.json').read_text());assert sum(c[0]=='apply-install' for c in calls)==before+1
             print('PASS: interrupted dispatched mutation is reported uncertain and is never automatically executed twice')
+            assert rpc({'action':'off'})['ok']
+            status_path=fixture/'var/lib/receptor/remote-status.plist';deadline=time.monotonic()+10
+            while time.monotonic()<deadline:
+                if status_path.exists() and 'PC rejected background access' in plistlib.loads(status_path.read_bytes()).get('message',''):break
+                time.sleep(.1)
+            else:raise AssertionError('Disabled-PC rejection was not reported in device diagnostics')
+            assert rpc({'action':'on'})['ok'];time.sleep(3)
+            assert query(pkg('installed'),20)['items']
+            print('PASS: device diagnostics distinguish a PC rejection and saved access reconnects when desktop access is re-enabled')
             config_path.unlink();agent.wait(timeout=8)
             count=len(json.loads((fixture/'calls.json').read_text()))
             assert 'error' in query(pkg('installed'),2)

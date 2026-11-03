@@ -18,9 +18,11 @@ GitHub Pages enforces HTTPS. Some legacy Cydia clients may not support its TLS/c
 
 Requires a rootful jailbreak and Cydia Substrate. The jailbreak must permit access to `/var/mobile/Media/Receptor/`. No global sandbox patch or certificate-validation bypass is installed. A compatible AppSync setup may be needed for IPAs that are not validly signed for the device; it is not installed automatically.
 
-## Desktop management and background access (1.8.0b1)
+## Desktop management and background access (1.8.0b2)
 
-Update **both apps** using the [1.8.0 beta 1 release](https://github.com/jajaengland/Receptor/releases/tag/v1.8.0-beta1). On Windows, enable **Allow background device access**, start sharing and open **Manage device…**. On the iPad, connect/refresh in **Desktop**, open **Background desktop access…**, compare the PC key and enable it once. Existing foreground pairings remain compatible.
+Update Receptor to **1.8.0b2** using the [beta 2 release](https://github.com/jajaengland/Receptor/releases/tag/v1.8.0-beta2); keep **Receptor Desktop 1.8.0 beta 1** on Windows. On Windows, enable **Allow background device access**, start sharing and open **Manage device…**. On the iPad, connect/refresh in **Desktop**, open **Background desktop access…**, compare the PC key and enable it once. Existing foreground pairings remain compatible.
+
+Beta 2 explicitly loads/starts the background service when access is enabled, instead of relying only on a filesystem trigger. For an existing beta 1 grant, tap **Restart service / Retry connection** once after updating. This starts a missing/stopped service without stopping a running one. The screen now distinguishes saved permission from connection state, refreshes diagnostics automatically and reports launchctl, network and authentication failures. This addresses a startup gap; the exact cause of the first reported device connection failure is not yet confirmed.
 
 The PC can then search/list/install/remove packages, manage sources, review APT dependency plans, inspect the operation log, request a confirmed respring and browse/upload/download files in **Receptor's download folder**, even after leaving the iPad app. The separate device Filesystem tab is not remotely exposed. Close Cydia before package changes. Source refresh uses system APT/TLS, so legacy repository/certificate limitations still apply.
 

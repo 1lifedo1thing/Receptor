@@ -3,6 +3,7 @@
 #import "../RCRemoteCrypto.h"
 #import "../RCRemoteSupport.h"
 #include <arpa/inet.h>
+#include <math.h>
 #ifndef RC_PACKAGE_TEST
 #import <CoreFoundation/CoreFoundation.h>
 #endif
@@ -242,6 +243,27 @@ static void WriteManagedSource(NSString *uri, BOOL remove) {
     if (valid && rename(buffer, [path fileSystemRepresentation])) valid = NO;
     if (!valid) unlink(buffer); free(buffer); Require(valid, @"Could not save sources; the old file was preserved.");
 }
+#if !defined(RC_PACKAGE_TEST) || defined(RC_REMOTE_HOST_TEST)
+static NSDictionary *RemoteService(BOOL start) {
+    NSString *binary=@RC_LAUNCHCTL_BINARY,*label=@"com.receptor.remote";
+    Require(access([binary fileSystemRepresentation],X_OK)==0,@"launchctl is missing; reinstall the jailbreak's launchctl package through Cydia.");
+    NSDictionary *listed=Run(binary,[NSArray arrayWithObjects:@"list",@"-x",label,nil]);
+    BOOL loaded=[[listed objectForKey:@"status"] intValue]==0;
+    if(start && !loaded) {
+        NSDictionary *load=Run(binary,[NSArray arrayWithObjects:@"load",@"-w",@"/Library/LaunchDaemons/com.receptor.remote.plist",nil]);
+        listed=Run(binary,[NSArray arrayWithObjects:@"list",@"-x",label,nil]); loaded=[[listed objectForKey:@"status"] intValue]==0;
+        Require(loaded, [NSString stringWithFormat:@"Background service could not be loaded (launchctl %d). Reinstall Receptor through Cydia, then retry.",[[load objectForKey:@"status"] intValue]]);
+    }
+    NSError *error=nil; id details=[NSPropertyListSerialization propertyListWithData:[[listed objectForKey:@"output"] dataUsingEncoding:NSUTF8StringEncoding] options:NSPropertyListImmutable format:NULL error:&error];
+    if(![details isKindOfClass:[NSDictionary class]])details=[NSDictionary dictionary];
+    BOOL running=[[details objectForKey:@"PID"] intValue]>0;
+    if(start && !running) {
+        NSDictionary *started=Run(binary,[NSArray arrayWithObjects:@"start",label,nil]);
+        Require([[started objectForKey:@"status"] intValue]==0,@"launchctl could not start the background service. Reinstall Receptor through Cydia, then retry.");
+    }
+    return [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:loaded],@"serviceLoaded",[NSNumber numberWithBool:running],@"serviceRunning",[NSNumber numberWithInt:[[details objectForKey:@"LastExitStatus"] intValue]],@"lastExitStatus",nil];
+}
+#endif
 static NSDictionary *RemoteConfiguration(NSArray *args) {
 #if defined(RC_PACKAGE_TEST) && !defined(RC_REMOTE_HOST_TEST)
     (void)args; Require(NO,@"Remote setup requires the remote-service test harness."); return nil;
@@ -253,9 +275,18 @@ static NSDictionary *RemoteConfiguration(NSArray *args) {
         else Require(errno==ENOENT,@"Cannot inspect background access.");
         return [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:NO],@"enabled",@"Background access disabled. New commands are blocked; an operation already running can finish safely.",@"output",nil];
     }
-    if([operation isEqual:@"remote-status"] && [args count]==1) {
+    if(([operation isEqual:@"remote-status"] || [operation isEqual:@"remote-start"]) && [args count]==1) {
         NSDictionary *config=RCRemoteRead(configPath); NSMutableDictionary *result=[NSMutableDictionary dictionaryWithObject:[NSNumber numberWithBool:config!=nil] forKey:@"enabled"];
-        if(config) { for(NSString *key in [NSArray arrayWithObjects:@"host",@"device",@"fingerprint",nil]) if([config objectForKey:key])[result setObject:[config objectForKey:key] forKey:key]; NSDictionary *status=RCRemoteRead(Path(@"/var/lib/receptor/remote-status.plist")); if([[status objectForKey:@"device"] isEqual:[config objectForKey:@"device"]] && [status objectForKey:@"message"])[result setObject:[status objectForKey:@"message"] forKey:@"output"]; }
+        if(config) {
+            for(NSString *key in [NSArray arrayWithObjects:@"host",@"device",@"fingerprint",nil]) if([config objectForKey:key])[result setObject:[config objectForKey:key] forKey:key];
+            [result addEntriesFromDictionary:RemoteService([operation isEqual:@"remote-start"])];
+            NSDictionary *status=RCRemoteRead(Path(@"/var/lib/receptor/remote-status.plist")); id date=[status objectForKey:@"updated"]?:[status objectForKey:@"lastConnected"];
+            BOOL recent=[date isKindOfClass:[NSDate class]] && fabs([date timeIntervalSinceNow])<60;
+            NSString *message=[[result objectForKey:@"serviceRunning"] boolValue]?@"Service running; no recent connection status is available.":[NSString stringWithFormat:@"Background permission is saved, but the service is not running (last exit %d). Tap Restart service / Retry connection.",[[result objectForKey:@"lastExitStatus"] intValue]];
+            if(recent && [[status objectForKey:@"device"] isEqual:[config objectForKey:@"device"]] && [status objectForKey:@"message"]) message=[status objectForKey:@"message"];
+            if([operation isEqual:@"remote-start"])message=@"Start requested. Connection status will refresh automatically.";
+            [result setObject:message forKey:@"output"];
+        } else [result setObject:@"Background access is disabled." forKey:@"output"];
         return result;
     }
     Require([operation isEqual:@"remote-enable"] && [args count]==2,@"Unknown remote setup operation.");
@@ -275,7 +306,10 @@ static NSDictionary *RemoteConfiguration(NSArray *args) {
         NSDictionary *saved=[NSDictionary dictionaryWithObjectsAndKeys:host,@"host",pub,@"publicKey",seed,@"seed",sealed,@"sealed",enrollment,@"enrollment",[RCRemoteHash(seed) substringToIndex:32],@"device",RCRemoteFingerprint(pub),@"fingerprint",nil];
         RCRemoteSave(configPath,saved);
     } @finally { unlink([path fileSystemRepresentation]); }
-    return [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"enabled",@"Background access enabled. Keep sharing and background access enabled on the PC. The iPad must stay powered on and reachable on Wi-Fi.",@"output",nil];
+    NSMutableDictionary *result=[NSMutableDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"enabled",@"Permission saved; background service start requested. Connection status will refresh automatically.",@"output",nil];
+    @try { [result addEntriesFromDictionary:RemoteService(YES)]; }
+    @catch(NSException *exception) { [result setObject:[exception reason] forKey:@"output"]; }
+    return result;
 #endif
 }
 static NSDictionary *Execute(NSArray *args) {
@@ -365,7 +399,7 @@ int main(int argc, char **argv) {
     @try {
         Require(argc >= 2 && argc <= 4, @"Invalid arguments.");
         NSMutableArray *args = [NSMutableArray array]; for (int i = 1; i < argc; i++) { NSString *arg = [NSString stringWithUTF8String:argv[i]]; Require(arg != nil, @"Invalid UTF-8 argument."); [args addObject:arg]; }
-        if(([[args objectAtIndex:0] isEqual:@"remote-disable"] || [[args objectAtIndex:0] isEqual:@"remote-status"]) && [args count]==1) result=RemoteConfiguration(args);
+        if(([[args objectAtIndex:0] isEqual:@"remote-disable"] || [[args objectAtIndex:0] isEqual:@"remote-status"] || [[args objectAtIndex:0] isEqual:@"remote-start"]) && [args count]==1) result=RemoteConfiguration(args);
         else {
         lock = open([Path(@"/var/tmp/receptor-packages.lock") fileSystemRepresentation], O_CREAT | O_RDWR | O_NOFOLLOW, 0600); struct stat info;
         Require(lock >= 0 && !fstat(lock, &info) && S_ISREG(info.st_mode) && info.st_nlink == 1 && info.st_uid == geteuid() && !(info.st_mode & 022) && !flock(lock, LOCK_EX | LOCK_NB), @"Another Receptor package operation is running or its lock is unsafe."); cloexec(lock);

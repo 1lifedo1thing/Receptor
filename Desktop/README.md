@@ -4,6 +4,8 @@ A small Windows companion for transferring files and managing Receptor devices o
 
 ## Background access and package management (1.8.0 beta 1)
 
+Use iOS **1.8.0b2** for explicit background-service startup, a service Retry button and automatic connection diagnostics. The Windows **1.8.0 beta 1** executable is unchanged. If a beta 1 device grant is enabled but no device appears, upgrade iOS and tap **Restart service / Retry connection** on its Background desktop access screen. Saved permission alone is not proof of a live connection.
+
 Update both apps to 1.8.0 beta 1. Enable **Allow background device access**, click **Start sharing**, then **Manage device…**. On the iPad, connect/refresh in Desktop, open **Background desktop access…** and compare the PC key before enabling it once. The saved grant reconnects with the app closed or after reboot whenever Wi-Fi is reachable. Keep this Windows app running (it can be minimized); no Windows service or sign-in startup is installed. iOS sleeping Wi-Fi behavior depends on power/OS, so unattended reachability is not guaranteed.
 
 Manage device has Packages, Sources, Files and Log tabs. Review dependency previews before confirming installs/removals. Source add/remove and refresh run the same fixed APT helper as the native Packages tab. Close Cydia and other package managers first. Files lists and transfers regular visible files only in `/var/mobile/Media/Receptor/`; it does not expose the device's full filesystem or automatically install uploaded DEBs. To install repository packages use Packages. APT retains the system's TLS/certificate behavior.

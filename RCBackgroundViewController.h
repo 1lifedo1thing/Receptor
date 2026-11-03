@@ -7,6 +7,7 @@
     NSString *_staged;
     NSDictionary *_status;
     UIAlertView *_prompt;
+    NSTimer *_refreshTimer;
 }
 - (id)initWithPublicKey:(NSString *)key host:(NSString *)host;
 @end
