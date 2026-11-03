@@ -46,3 +46,7 @@ python3 tests/test_deb_helper.py
 The first test compiles the production Objective-C helper under GNUstep with every path redirected into a private fixture and fake APT executables. Test mode is forbidden on Apple builds. It exercises listing/search/details/refresh, exact-version install/remove previews and confirmation, normal/per-install unsigned policy, changed dependency/status/source/token rejection, dangerous identifiers, protected and transitive removals, native failures, source validation/duplicates/removal, legacy/preferences metadata, rollback, backups, journals and locks. It never invokes the host’s real APT/dpkg or uses the network. The DEB/respring tests use separate fake commands.
 
 The signed armv7 build, package root ownership/modes, caller-authentication markers, legacy linkage and repository checksums are checked separately. These checks do not execute UIKit or the device-only code-hash/CFPreferences/kernel/network paths.
+
+## 1.8.0 background desktop integration
+
+See [Background desktop setup and testing](REMOTE-TESTING.md). The optional root daemon invokes the same fixed package helper; mobile-owned download-folder operation locking now also coordinates IPA, DEB, APT and respring actions. Status/revocation remain available while another package operation holds the lock. No automatic respring or full-filesystem remote access is added. Test foreground and background transaction exclusion on physical devices before relying on unattended changes.

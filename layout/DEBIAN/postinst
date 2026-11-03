@@ -4,5 +4,11 @@ chown 0:0 /usr/libexec/receptor-deb-helper
 chmod 4755 /usr/libexec/receptor-deb-helper
 chown 0:0 /usr/libexec/receptor-package-helper
 chmod 4755 /usr/libexec/receptor-package-helper
+mkdir -p /var/lib/receptor
+chown 0:0 /var/lib/receptor
+chmod 0700 /var/lib/receptor
+chown 0:0 /Library/LaunchDaemons/com.receptor.remote.plist
+chmod 0644 /Library/LaunchDaemons/com.receptor.remote.plist
+/bin/launchctl load /Library/LaunchDaemons/com.receptor.remote.plist >/dev/null 2>&1 || true
 if command -v uicache >/dev/null 2>&1; then uicache || true; fi
 exit 0

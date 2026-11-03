@@ -8,6 +8,6 @@ $applicationSource = Join-Path $PSScriptRoot 'Program.cs'
 $serverSource = Join-Path $PSScriptRoot 'CompanionServer.cs'
 $settingsSource = Join-Path $PSScriptRoot 'ConnectionSettings.cs'
 $executablePath = Join-Path $outputDirectory 'ReceptorDesktop.exe'
-& $compiler /nologo /target:winexe /platform:anycpu /optimize+ /debug- /warnaserror+ /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Xml.dll /reference:System.Security.dll "/out:$executablePath" $applicationSource $serverSource $settingsSource
+& $compiler /nologo /target:winexe /platform:anycpu /optimize+ /debug- /warnaserror+ /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Xml.dll /reference:System.Security.dll "/out:$executablePath" (Join-Path $PSScriptRoot '*.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Desktop build failed.' }
 Write-Output "Built $outputDirectory/ReceptorDesktop.exe"

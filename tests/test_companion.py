@@ -31,7 +31,7 @@ def main():
     output.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([str(compiler), '/nologo', '/target:exe', '/warnaserror+',
                     '/reference:System.Security.dll', '/out:' + str(output), str(ROOT / 'tests/companion_host.cs'),
-                    str(ROOT / 'Desktop/CompanionServer.cs'), str(ROOT / 'Desktop/ConnectionSettings.cs')], check=True)
+                    str(ROOT / 'Desktop/CompanionServer.cs'), str(ROOT / 'Desktop/ConnectionSettings.cs'), str(ROOT / 'Desktop/RemoteProtocol.cs'), str(ROOT / 'Desktop/RemoteBroker.cs')], check=True)
     with tempfile.TemporaryDirectory(prefix='receptor-companion-test-') as temporary:
         source = Path(temporary) / 'Example & snowman \u2603.deb'
         payload = b'!<arch>\n' + secrets.token_bytes(256 * 1024)

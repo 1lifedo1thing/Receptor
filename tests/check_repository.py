@@ -39,6 +39,8 @@ def main():
         with tarfile.open(fileobj=io.BytesIO(control_data), mode="r:*") as archive:
             control = next(archive.extractfile(member).read().decode() for member in archive
                            if member.name.lstrip("./") == "control")
+            scripts = {member.name.lstrip('./'): (member.mode, archive.extractfile(member).read())
+                       for member in archive if member.isfile() and member.name.lstrip('./') in ('postinst', 'prerm')}
         assert "Package: " + fields["Package"] + "\n" in control
         assert "Version: " + fields["Version"] + "\n" in control
         assert "Architecture: " + fields["Architecture"] + "\n" in control
@@ -94,6 +96,19 @@ def main():
                     if command == 0x25: minimum = struct.unpack_from("<II", binary, offset + 8)
                     offset += size
                 assert minimum == (0x40000, 0x50000)
+            if "usr/libexec/receptor-remote-agent" in payload:
+                for name in ['usr/libexec/receptor-remote-agent', 'usr/libexec/receptor-file-helper']:
+                    member = members_info[name]
+                    assert member.uid == member.gid == 0 and member.mode == 0o755
+                    assert struct.unpack_from('<III', payload[name]) == (0xfeedface, 12, 9)
+                    assert b'RC_REMOTE_TEST_ROOT' not in payload[name]
+                name = 'Library/LaunchDaemons/com.receptor.remote.plist'
+                assert members_info[name].mode == 0o644 and members_info[name].uid == 0
+                job = plistlib.loads(payload[name])
+                assert job['UserName'] == 'root' and 'RunAtLoad' not in job
+                assert job['KeepAlive'] == {'PathState': {'/var/lib/receptor/remote.plist': True}}
+                assert job['ProgramArguments'] == ['/usr/libexec/receptor-remote-agent']
+                assert scripts['prerm'][0] & 0o111 and b'remove|deconfigure)' in scripts['prerm'][1]
             if "usr/libexec/receptor-deb-helper" in payload:
                 helper_name = "usr/libexec/receptor-deb-helper"
                 helper = members_info[helper_name]

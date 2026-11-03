@@ -44,6 +44,7 @@ cp lib/.libs/libcurl.a "$root/vendor/tls/lib/"
 cp "$prefix/lib/"*.a "$root/vendor/tls/lib/"
 mkdir -p "$root/vendor/tls/include/curl"
 cp include/curl/*.h "$root/vendor/tls/include/curl/"
+cp -R "$prefix/include/mbedtls" "$prefix/include/psa" "$root/vendor/tls/include/"
 cp COPYING "$root/vendor/tls/licenses/curl.txt"
 cp "$work/mbedtls-3.6.7/LICENSE" "$root/vendor/tls/licenses/mbedtls.txt"
 printf 'Built curl 8.23.0 + Mbed TLS 3.6.7 for armv7 / iOS 4.0.\n'

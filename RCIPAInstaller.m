@@ -10,6 +10,8 @@
 #include <dlfcn.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdio.h>
+#include "RCOperationLock.h"
 
 NSString * const RCInstallationChangedNotification = @"ReceptorInstallationChanged";
 typedef void (*RCMobileInstallationCallback)(CFDictionaryRef information);
@@ -56,7 +58,7 @@ static void RCInstallProgress(CFDictionaryRef information) {
 
 @implementation RCIPAInstaller
 @synthesize busy = _busy, status = _status;
-- (id)init { if ((self = [super init])) _backgroundTask = UIBackgroundTaskInvalid; return self; }
+- (id)init { if ((self = [super init])) { _backgroundTask = UIBackgroundTaskInvalid; _operationLock=-1; } return self; }
 + (RCIPAInstaller *)sharedInstaller {
     static RCIPAInstaller *installer = nil;
     @synchronized(self) { if (!installer) installer = [[self alloc] init]; }
@@ -73,6 +75,8 @@ static void RCInstallProgress(CFDictionaryRef information) {
     if (!RCIsRegularDownload(name) || ![[[name pathExtension] lowercaseString] isEqual:@"ipa"]) {
         [[ReceptorUI sharedUI] showMessage:@"Choose a saved IPA file."]; return;
     }
+    _operationLock=RCAcquireMobileOperationLock([RCDownloadsDirectory fileSystemRepresentation],501);
+    if(_operationLock<0) { [[ReceptorUI sharedUI] showMessage:@"Another local or desktop installation is running. Wait for it to finish."]; return; }
     _busy = YES;
     _backgroundTask = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
         UIBackgroundTaskIdentifier task = _backgroundTask; _backgroundTask = UIBackgroundTaskInvalid;
@@ -141,10 +145,11 @@ static void RCInstallProgress(CFDictionaryRef information) {
     [pool drain];
 }
 - (void)finished:(NSString *)message {
+    if(_operationLock>=0) { close(_operationLock); _operationLock=-1; }
     _busy = NO;
     if (_backgroundTask != UIBackgroundTaskInvalid) { [[UIApplication sharedApplication] endBackgroundTask:_backgroundTask]; _backgroundTask = UIBackgroundTaskInvalid; }
     [self setInstallStatus:nil];
     [[ReceptorUI sharedUI] showMessage:message];
 }
-- (void)dealloc { [_status release]; [super dealloc]; }
+- (void)dealloc { if(_operationLock>=0)close(_operationLock); [_status release]; [super dealloc]; }
 @end

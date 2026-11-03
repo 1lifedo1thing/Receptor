@@ -63,11 +63,14 @@ namespace ReceptorDesktop {
         private int receivedCount;
         public event Action<string> Status;
         public event Action<string> FileReceived;
+        public readonly RemoteBroker Remote;
         public string Code { get { return identity.Code; } }
         public int Port { get { return ((IPEndPoint)listener.LocalEndpoint).Port; } }
         public CompanionServer(IPAddress address, int port, ConnectionSettings settings) : this(address, port, settings, null) { }
-        public CompanionServer(IPAddress address, int port, ConnectionSettings settings, ReceiveOptions incoming) {
+        public CompanionServer(IPAddress address, int port, ConnectionSettings settings, ReceiveOptions incoming) : this(address,port,settings,incoming,null) { }
+        public CompanionServer(IPAddress address, int port, ConnectionSettings settings, ReceiveOptions incoming, RemoteIdentity remoteIdentity) {
             identity = settings; key = settings.Key;
+            if(remoteIdentity!=null) Remote=new RemoteBroker(remoteIdentity,key);
             receiveFolder = incoming != null && incoming.Enabled ? Path.GetFullPath(incoming.Folder) : null;
             byte[] random = new byte[16];
             using (RandomNumberGenerator rng = RandomNumberGenerator.Create()) rng.GetBytes(random);
@@ -105,7 +108,7 @@ namespace ReceptorDesktop {
                 TcpClient client;
                 try { client = listener.AcceptTcpClient(); } catch (SocketException) { break; } catch (ObjectDisposedException) { break; }
                 lock (gate) {
-                    if (stopped || clients.Count >= 4) { client.Close(); continue; }
+                    if (stopped || clients.Count >= 12) { client.Close(); continue; }
                     clients.Add(client);
                 }
                 ThreadPool.QueueUserWorkItem(delegate { Handle(client); });
@@ -136,6 +139,7 @@ namespace ReceptorDesktop {
                     }
                     xml.WriteEndElement();
                     xml.WriteElementString("key", "accepts_uploads"); xml.WriteStartElement(receiveFolder != null ? "true" : "false"); xml.WriteEndElement();
+                    if(Remote!=null && Remote.Enabled) Field(xml,"remote_public_key","string",Remote.PublicKey);
                     xml.WriteEndElement(); xml.WriteEndElement(); xml.WriteEndDocument();
                 }
                 return buffer.ToArray();
@@ -173,6 +177,7 @@ namespace ReceptorDesktop {
                         if (headers.ContainsKey(name)) throw new IOException("Duplicate header.");
                         headers.Add(name, line.Substring(colon + 1).Trim());
                     }
+                    if(request=="POST /v3/control HTTP/1.1" || request=="POST /v3/control HTTP/1.0") { HandleRemote(stream,headers); return; }
                     Match upload = Regex.Match(request, @"^PUT /v2/uploads\?nonce=([a-f0-9]{32}) HTTP/1\.[01]$");
                     if (upload.Success) { ReceiveUpload(client, stream, headers, upload.Groups[1].Value); return; }
                     Match match = Regex.Match(request, @"^GET (/v2/pairing|/v2/manifest|/v2/files/[a-f0-9]{32})\?nonce=([a-f0-9]{32}) HTTP/1\.[01]$");
@@ -232,6 +237,22 @@ namespace ReceptorDesktop {
                 name = name.Substring(0, count) + extension;
             }
             return name;
+        }
+        void HandleRemote(Stream stream, Dictionary<string,string> headers) {
+            try {
+                string lengthText,id,nonce,sealedSeed,enrollment,auth; int length;
+                if(Remote==null || !Remote.Enabled || headers.ContainsKey("Transfer-Encoding") || !headers.TryGetValue("Content-Length",out lengthText) ||
+                    !Regex.IsMatch(lengthText,@"^[1-9][0-9]{1,7}$") || !Int32.TryParse(lengthText,out length) || length>RemoteCrypto.MaximumFrame ||
+                    !headers.TryGetValue("X-RC-Device",out id) || !headers.TryGetValue("X-RC-Nonce",out nonce) ||
+                    !headers.TryGetValue("X-RC-Sealed",out sealedSeed) || !headers.TryGetValue("X-RC-Enrollment",out enrollment) || !headers.TryGetValue("X-RC-Auth",out auth)) { Header(stream,403,0,null,"text/plain"); return; }
+                byte[] frame=new byte[length]; int offset=0; while(offset<length) { int count=stream.Read(frame,offset,length-offset); if(count<=0) throw new IOException("Incomplete remote frame."); offset+=count; }
+                string responseAuth; byte[] output=Remote.Handle(id,nonce,sealedSeed,enrollment,auth,frame,out responseAuth);
+                Header(stream,200,output.Length,responseAuth,"application/octet-stream"); stream.Write(output,0,output.Length);
+            } catch(System.Security.Cryptography.CryptographicException) { Header(stream,403,0,null,"text/plain"); }
+            catch(FormatException) { Header(stream,403,0,null,"text/plain"); }
+            catch(OverflowException) { Header(stream,403,0,null,"text/plain"); }
+            catch(System.Xml.XmlException) { Header(stream,403,0,null,"text/plain"); }
+            catch(IOException) { Header(stream,403,0,null,"text/plain"); }
         }
         private void ReceiveUpload(TcpClient client, Stream stream, Dictionary<string,string> headers, string nonce) {
             // An active upload keeps its chosen destination; changes apply to new requests.
@@ -297,6 +318,7 @@ namespace ReceptorDesktop {
         private void Notify(string text) { Action<string> handler = Status; if (handler != null) handler(text); }
         private void TryDeleteDirectory() { try { Directory.Delete(staging); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
         public void Dispose() {
+            if(Remote!=null) Remote.Dispose();
             lock (gate) {
                 if (stopped) return;
                 stopped = true; listener.Stop();

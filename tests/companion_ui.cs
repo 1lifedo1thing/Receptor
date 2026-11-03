@@ -17,6 +17,12 @@ static class CompanionUiTest {
     }
     [STAThread] static void Main(string[] args) {
         Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+        RemoteIdentity remoteIdentity=RemoteIdentity.Create(); Check(!remoteIdentity.Enabled);
+        remoteIdentity.Enabled=true; remoteIdentity.Save(args[0]+".identity-test");
+        RemoteIdentity restoredIdentity=RemoteIdentity.Load(args[0]+".identity-test");
+        Check(restoredIdentity.Enabled && restoredIdentity.Fingerprint==remoteIdentity.Fingerprint && restoredIdentity.PublicKey==remoteIdentity.PublicKey);
+        restoredIdentity.Enabled=false;restoredIdentity.Save(args[0]+".identity-test");Check(!RemoteIdentity.Load(args[0]+".identity-test").Enabled);
+        Console.WriteLine("PASS: DPAPI background identity and opt-in preference survive save/load without changing the pinned PC key");
         using (CompanionForm form = new CompanionForm(args[0])) {
             try {
                 ComboBox addresses = (ComboBox)Field(form, "addresses");

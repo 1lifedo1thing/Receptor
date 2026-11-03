@@ -2,6 +2,7 @@
 extern NSString * const RCInstallationChangedNotification;
 @interface RCIPAInstaller : NSObject {
     BOOL _busy;
+    int _operationLock;
     NSString *_status;
     UIBackgroundTaskIdentifier _backgroundTask;
 }

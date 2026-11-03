@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     with tempfile.TemporaryDirectory(prefix='receptor-packages-') as temporary:
         fixture = Path(temporary)
-        for directory in ['usr/bin', 'var/tmp', 'var/lib/dpkg', 'var/lib/cydia', 'etc/apt/sources.list.d', 'var/mobile/Library/Preferences']:
+        for directory in ['downloads', 'usr/bin', 'var/tmp', 'var/lib/dpkg', 'var/lib/cydia', 'etc/apt/sources.list.d', 'var/mobile/Library/Preferences']:
             (fixture / directory).mkdir(parents=True, exist_ok=True)
         status = fixture / 'var/lib/dpkg/status'
         status.write_text('Package: example.tweak\nName: Example Tweak\nVersion: 1.0\nStatus: install ok installed\nDescription: A fixture\n\nPackage: core.system\nVersion: 1.0\nStatus: install ok installed\nEssential: yes\n\n')

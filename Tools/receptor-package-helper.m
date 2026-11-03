@@ -1,5 +1,8 @@
 /* Fixed APT/source operations. No shell, arbitrary paths, apt options or commands. */
 #import <Foundation/Foundation.h>
+#import "../RCRemoteCrypto.h"
+#import "../RCRemoteSupport.h"
+#include <arpa/inet.h>
 #ifndef RC_PACKAGE_TEST
 #import <CoreFoundation/CoreFoundation.h>
 #endif
@@ -239,9 +242,46 @@ static void WriteManagedSource(NSString *uri, BOOL remove) {
     if (valid && rename(buffer, [path fileSystemRepresentation])) valid = NO;
     if (!valid) unlink(buffer); free(buffer); Require(valid, @"Could not save sources; the old file was preserved.");
 }
+static NSDictionary *RemoteConfiguration(NSArray *args) {
+#if defined(RC_PACKAGE_TEST) && !defined(RC_REMOTE_HOST_TEST)
+    (void)args; Require(NO,@"Remote setup requires the remote-service test harness."); return nil;
+#else
+    NSString *operation=[args objectAtIndex:0],*configPath=Path(@"/var/lib/receptor/remote.plist");
+    if([operation isEqual:@"remote-disable"] && [args count]==1) {
+        struct stat info;
+        if(!lstat([configPath fileSystemRepresentation],&info)) Require(S_ISREG(info.st_mode) && info.st_uid==geteuid() && info.st_nlink==1 && unlink([configPath fileSystemRepresentation])==0,@"Cannot revoke background access.");
+        else Require(errno==ENOENT,@"Cannot inspect background access.");
+        return [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:NO],@"enabled",@"Background access disabled. New commands are blocked; an operation already running can finish safely.",@"output",nil];
+    }
+    if([operation isEqual:@"remote-status"] && [args count]==1) {
+        NSDictionary *config=RCRemoteRead(configPath); NSMutableDictionary *result=[NSMutableDictionary dictionaryWithObject:[NSNumber numberWithBool:config!=nil] forKey:@"enabled"];
+        if(config) { for(NSString *key in [NSArray arrayWithObjects:@"host",@"device",@"fingerprint",nil]) if([config objectForKey:key])[result setObject:[config objectForKey:key] forKey:key]; NSDictionary *status=RCRemoteRead(Path(@"/var/lib/receptor/remote-status.plist")); if([[status objectForKey:@"device"] isEqual:[config objectForKey:@"device"]] && [status objectForKey:@"message"])[result setObject:[status objectForKey:@"message"] forKey:@"output"]; }
+        return result;
+    }
+    Require([operation isEqual:@"remote-enable"] && [args count]==2,@"Unknown remote setup operation.");
+    NSString *basename=[args objectAtIndex:1];
+    Require([basename hasPrefix:@".receptor-remote-config-"] && [basename hasSuffix:@".plist"] && [basename length]<120 && [basename rangeOfString:@"/"].location==NSNotFound && [basename rangeOfString:@"\\"].location==NSNotFound && [basename rangeOfString:@".."].location==NSNotFound,@"Invalid staged setup file.");
+    NSString *path=[@RC_DOWNLOADS_DIR stringByAppendingPathComponent:basename]; struct stat info;
+    Require(!lstat([path fileSystemRepresentation],&info) && S_ISREG(info.st_mode) && info.st_uid==RC_CALLER_UID && info.st_nlink==1 && !(info.st_mode&077) && info.st_size>0 && info.st_size<8192,@"Unsafe remote setup file.");
+    @try {
+        NSData *data=ReadFile(path,8192,NO); NSError *error=nil; id config=[NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:NULL error:&error]; Require([config isKindOfClass:[NSDictionary class]],@"Invalid remote setup.");
+        NSString *host=[config objectForKey:@"host"],*pub=[config objectForKey:@"publicKey"],*enrollment=[config objectForKey:@"enrollment"]; NSData *seed=[config objectForKey:@"seed"],*sealed=[config objectForKey:@"sealed"];
+        Require([host isKindOfClass:[NSString class]] && [host length]<32,@"Invalid PC address."); NSArray *parts=[host componentsSeparatedByString:@":"]; struct in_addr address;
+        Require([parts count]==2 && inet_pton(AF_INET,[[parts objectAtIndex:0] UTF8String],&address)==1,@"Use a private IPv4 PC address."); uint32_t ip=ntohl(address.s_addr);
+        Require((ip>>24)==10 || (ip>>20)==0xac1 || (ip>>16)==0xc0a8 || (ip>>16)==0xa9fe,@"Background access is limited to a private IPv4 network.");
+        NSString *port=[parts objectAtIndex:1]; Require([port length] && [port length]<=5 && [port rangeOfCharacterFromSet:[[NSCharacterSet decimalDigitCharacterSet] invertedSet]].location==NSNotFound && [port intValue]>0 && [port intValue]<=65535,@"Invalid PC port.");
+        Require([seed isKindOfClass:[NSData class]] && [seed length]==32 && [sealed isKindOfClass:[NSData class]] && [sealed length]==256 && [pub isKindOfClass:[NSString class]] && RCRemoteFingerprint(pub) && RCRemoteSeal(pub,seed),@"Invalid pinned PC key or private device secret.");
+        Require([enrollment isKindOfClass:[NSString class]] && [enrollment length]==64 && [enrollment rangeOfCharacterFromSet:[[NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdef"] invertedSet]].location==NSNotFound,@"Invalid enrollment proof.");
+        NSDictionary *saved=[NSDictionary dictionaryWithObjectsAndKeys:host,@"host",pub,@"publicKey",seed,@"seed",sealed,@"sealed",enrollment,@"enrollment",[RCRemoteHash(seed) substringToIndex:32],@"device",RCRemoteFingerprint(pub),@"fingerprint",nil];
+        RCRemoteSave(configPath,saved);
+    } @finally { unlink([path fileSystemRepresentation]); }
+    return [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"enabled",@"Background access enabled. Keep sharing and background access enabled on the PC. The iPad must stay powered on and reachable on Wi-Fi.",@"output",nil];
+#endif
+}
 static NSDictionary *Execute(NSArray *args) {
     Require([args count] >= 1 && [args count] <= 3, @"Invalid operation arguments.");
     NSString *operation = [args objectAtIndex:0], *value = [args count] > 1 ? [args objectAtIndex:1] : @"";
+    if([operation hasPrefix:@"remote-"])return RemoteConfiguration(args);
     if ([operation isEqual:@"last-result"] && [args count] == 1) {
         NSData *data = ReadFile([PrivateDirectory() stringByAppendingPathComponent:@"last-operation.plist"], 4 * 1024 * 1024, YES);
         if (!data) return [NSDictionary dictionaryWithObject:@"No package operation has been recorded yet." forKey:@"output"];
@@ -321,21 +361,25 @@ int main(int argc, char **argv) {
 #ifndef RC_PACKAGE_TEST
     if (geteuid() != 0 || (getuid() != 0 && (getuid() != RC_CALLER_UID || !authorized_parent())) || setgroups(0, NULL) || setgid(0) || setuid(0)) return fail("This package helper can only be started by the installed Receptor app.");
 #endif
-    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init]; NSDictionary *result = nil; int lock = -1; NSString *journalOperation = nil;
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init]; NSDictionary *result = nil; int lock = -1,mobileLock=-1; NSString *journalOperation = nil;
     @try {
         Require(argc >= 2 && argc <= 4, @"Invalid arguments.");
+        NSMutableArray *args = [NSMutableArray array]; for (int i = 1; i < argc; i++) { NSString *arg = [NSString stringWithUTF8String:argv[i]]; Require(arg != nil, @"Invalid UTF-8 argument."); [args addObject:arg]; }
+        if(([[args objectAtIndex:0] isEqual:@"remote-disable"] || [[args objectAtIndex:0] isEqual:@"remote-status"]) && [args count]==1) result=RemoteConfiguration(args);
+        else {
         lock = open([Path(@"/var/tmp/receptor-packages.lock") fileSystemRepresentation], O_CREAT | O_RDWR | O_NOFOLLOW, 0600); struct stat info;
         Require(lock >= 0 && !fstat(lock, &info) && S_ISREG(info.st_mode) && info.st_nlink == 1 && info.st_uid == geteuid() && !(info.st_mode & 022) && !flock(lock, LOCK_EX | LOCK_NB), @"Another Receptor package operation is running or its lock is unsafe."); cloexec(lock);
-        NSMutableArray *args = [NSMutableArray array]; for (int i = 1; i < argc; i++) { NSString *arg = [NSString stringWithUTF8String:argv[i]]; Require(arg != nil, @"Invalid UTF-8 argument."); [args addObject:arg]; }
+        mobileLock=RCAcquireMobileOperationLock(RC_DOWNLOADS_DIR,RC_CALLER_UID); Require(mobileLock>=0,@"An installation is running or Receptor’s download folder is unavailable.");
         NSString *operation = [args objectAtIndex:0];
         if ([operation hasPrefix:@"apply-"] || [operation hasPrefix:@"source-"] || [operation isEqual:@"refresh"]) {
             journalOperation = operation;
             Journal([NSDictionary dictionaryWithObjectsAndKeys:@"Operation started; no completion result is recorded yet. Check the package database in Cydia before retrying an interrupted install.", @"output", operation, @"requested", [NSDate date], @"started", nil]);
         }
         result = Execute(args);
+        }
     } @catch (NSException *exception) { result = [NSDictionary dictionaryWithObject:[exception reason] ?: @"Package operation failed." forKey:@"error"]; }
     if (journalOperation) { @try { NSMutableDictionary *record = [[result mutableCopy] autorelease]; [record setObject:journalOperation forKey:@"requested"]; [record setObject:[NSDate date] forKey:@"finished"]; Journal(record); } @catch (NSException *exception) { NSMutableDictionary *record = [[result mutableCopy] autorelease]; [record setObject:@"The operation completed but its durable journal could not be saved." forKey:@"journalWarning"]; result = record; } }
     NSError *error = nil; NSData *data = [NSPropertyListSerialization dataWithPropertyList:result format:NSPropertyListXMLFormat_v1_0 options:0 error:&error];
-    if (data) fwrite([data bytes], 1, [data length], stdout); if (lock >= 0) close(lock);
+    if (data) fwrite([data bytes], 1, [data length], stdout); if (lock >= 0) close(lock); if(mobileLock>=0)close(mobileLock);
     int status = data ? 0 : 2; [pool drain]; return status;
 }

@@ -12,6 +12,8 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <spawn.h>
+#include <sys/wait.h>
 
 static NSString *RCHex(const unsigned char *bytes, size_t count) {
     NSMutableString *text = [NSMutableString stringWithCapacity:count * 2];
@@ -147,7 +149,7 @@ static size_t RCCompanionRead(char *bytes, size_t size, size_t count, void *poin
 }
 
 @implementation RCCompanionClient
-@synthesize delegate = _delegate, busy = _busy, canUpload = _canUpload;
+@synthesize delegate = _delegate, busy = _busy, canUpload = _canUpload, remotePublicKey = _remotePublicKey, host = _host;
 + (NSDictionary *)savedConnection {
     NSMutableDictionary *query = RCConnectionQuery();
     [query setObject:(id)kCFBooleanTrue forKey:(id)kSecReturnData];
@@ -161,6 +163,26 @@ static size_t RCCompanionRead(char *bytes, size_t size, size_t count, void *poin
         RCHexString([saved objectForKey:@"key"], 64) && RCHexString([saved objectForKey:@"salt"], 32) ? saved : nil;
 }
 + (BOOL)forgetSavedConnection {
+    // Revoke the separate background grant before removing the foreground Keychain record.
+    const char *helper="/usr/libexec/receptor-package-helper";
+    struct stat info;
+    if(stat(helper,&info) || info.st_uid!=0 || !(info.st_mode&S_ISUID) || (info.st_mode&022))return NO;
+    char *temporary=strdup([[NSTemporaryDirectory() stringByAppendingPathComponent:@"receptor-revoke-XXXXXX"] fileSystemRepresentation]); int fd=temporary?mkstemp(temporary):-1;
+    if(fd<0) { free(temporary); return NO; } unlink(temporary); free(temporary);
+    if(fd<=2) { int copy=fcntl(fd,F_DUPFD,3); close(fd); fd=copy; if(fd<0)return NO; } fcntl(fd,F_SETFD,FD_CLOEXEC);
+    posix_spawn_file_actions_t actions; int setup=posix_spawn_file_actions_init(&actions); BOOL initialized=setup==0;
+    if(!setup)setup=posix_spawn_file_actions_addopen(&actions,0,"/dev/null",O_RDONLY,0);
+    if(!setup)setup=posix_spawn_file_actions_adddup2(&actions,fd,1);
+    if(!setup)setup=posix_spawn_file_actions_addopen(&actions,2,"/dev/null",O_WRONLY,0);
+    if(!setup)setup=posix_spawn_file_actions_addclose(&actions,fd);
+    char *arguments[]={(char *)helper,"remote-disable",NULL},*environment[]={"PATH=/usr/bin:/bin:/usr/sbin:/sbin","HOME=/var/mobile","LANG=C",NULL}; pid_t child=0;
+    int error=setup?setup:posix_spawn(&child,helper,&actions,NULL,arguments,environment); if(initialized)posix_spawn_file_actions_destroy(&actions);
+    BOOL revoked=NO;
+    if(!error) { int result=0; pid_t waited; do { waited=waitpid(child,&result,0); } while(waited<0 && errno==EINTR);
+        off_t size=lseek(fd,0,SEEK_END); if(waited==child && WIFEXITED(result) && WEXITSTATUS(result)==0 && size>0 && size<8192) {
+            lseek(fd,0,SEEK_SET); NSMutableData *data=[NSMutableData dataWithLength:(NSUInteger)size]; if(read(fd,[data mutableBytes],[data length])==size) { NSError *parseError=nil; id value=[NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:NULL error:&parseError]; revoked=[value isKindOfClass:[NSDictionary class]] && [value objectForKey:@"enabled"] && ![[value objectForKey:@"enabled"] boolValue]; }
+        }
+    } close(fd); if(!revoked)return NO;
     OSStatus status = SecItemDelete((CFDictionaryRef)RCConnectionQuery());
     return status == errSecSuccess || status == errSecItemNotFound;
 }
@@ -216,6 +238,7 @@ static size_t RCCompanionRead(char *bytes, size_t size, size_t count, void *poin
     [_pairingCode release]; _pairingCode = useSaved ? nil : [key copy];
     [_session release]; _session = nil;
     _canUpload = NO;
+    [_remotePublicKey release]; _remotePublicKey=nil;
     _busy = YES; @synchronized(self) { _cancelled = NO; }
     [NSThread detachNewThreadSelector:@selector(run:) toTarget:self withObject:[NSDictionary dictionary]];
     return YES;
@@ -445,6 +468,8 @@ static size_t RCCompanionRead(char *bytes, size_t size, size_t count, void *poin
             [result setObject:files forKey:@"files"];
             id accepts = [plist objectForKey:@"accepts_uploads"];
             [result setObject:[NSNumber numberWithBool:[accepts isKindOfClass:[NSNumber class]] && [accepts boolValue]] forKey:@"canUpload"];
+            id publicKey=[plist objectForKey:@"remote_public_key"];
+            if([publicKey isKindOfClass:[NSString class]] && [publicKey length]<4096 && [publicKey hasPrefix:@"-----BEGIN PUBLIC KEY-----"]) [result setObject:publicKey forKey:@"remotePublicKey"];
         }
         else failure = @"The desktop returned an invalid package list. Update both apps and reconnect.";
     }
@@ -464,9 +489,9 @@ static size_t RCCompanionRead(char *bytes, size_t size, size_t count, void *poin
             NSMutableDictionary *updated = [[result mutableCopy] autorelease];
             [updated setObject:@"Connected, but iOS could not save the pairing in Keychain. Unlock the device and try connecting again." forKey:@"saveWarning"];
             result = updated;
-        }
+        } else { [_remotePublicKey release]; _remotePublicKey=[[result objectForKey:@"remotePublicKey"] copy]; }
     }
     [_delegate companion:self finished:result];
 }
-- (void)dealloc { [_host release]; [_key release]; [_pairingCode release]; [_salt release]; [_session release]; [super dealloc]; }
+- (void)dealloc { [_remotePublicKey release]; [_host release]; [_key release]; [_pairingCode release]; [_salt release]; [_session release]; [super dealloc]; }
 @end

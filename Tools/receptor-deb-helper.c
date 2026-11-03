@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include "../RCOperationLock.h"
 
 #if defined(RC_HELPER_TEST) && defined(__APPLE__)
 #error Test mode must never be compiled into an Apple device helper.
@@ -195,6 +196,8 @@ int main(int argc, char **argv) {
     if (operation_lock < 0 || fstat(operation_lock, &lock_info) || !S_ISREG(lock_info.st_mode) || lock_info.st_nlink != 1 ||
         lock_info.st_uid != geteuid() || (lock_info.st_mode & 022) || flock(operation_lock, LOCK_EX | LOCK_NB)) return fail("Another package operation is running or its lock is unsafe.");
     cloexec(operation_lock); // Held until this helper exits, including across its dpkg/launchctl children.
+    int mobile_lock=RCAcquireMobileOperationLock(RC_DOWNLOADS_DIR,RC_CALLER_UID);
+    if(mobile_lock<0)return fail("An installation is running or Receptor's download folder is unavailable.");
     if (respring) return run_respring(strcmp(argv[1], "--respring-backboard") == 0);
     struct stat info;
     int directory = open(RC_DOWNLOADS_DIR, O_RDONLY | O_NOFOLLOW);

@@ -3,6 +3,7 @@
 #import "ReceptorUI.h"
 #import "RCDEBInstaller.h"
 #import "RCIPAInstaller.h"
+#import "RCBackgroundViewController.h"
 
 @interface RCCompanionViewController ()
 - (void)setStatus:(NSString *)status;
@@ -69,7 +70,7 @@
 - (BOOL)textFieldShouldReturn:(UITextField *)field { [field resignFirstResponder]; return YES; }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { (void)tableView; return 2; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    (void)tableView; return section == 0 ? 4 : [_packages count];
+    (void)tableView; return section == 0 ? 5 : [_packages count];
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     (void)tableView; return section == 0 ? @"Pair with your PC" : @"Files on desktop";
@@ -88,7 +89,7 @@
         field.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         [cell.contentView addSubview:field]; cell.selectionStyle = UITableViewCellSelectionStyleNone;
     } else if (indexPath.section == 0) {
-        cell.textLabel.text = indexPath.row == 2 ? @"Connect / Refresh" : @"Forget saved connection";
+        cell.textLabel.text = indexPath.row == 2 ? @"Connect / Refresh" : indexPath.row==3 ? @"Forget saved connection" : @"Background desktop access…";
         cell.textLabel.textColor = _client.busy ? [UIColor grayColor] : [UIColor colorWithRed:0 green:0.35f blue:0.75f alpha:1];
     } else {
         NSDictionary *file = [_packages objectAtIndex:indexPath.row];
@@ -104,6 +105,7 @@
     [_address resignFirstResponder]; [_code resignFirstResponder];
     NSError *error = nil;
     if (indexPath.section == 0) {
+        if(indexPath.row==4) { RCBackgroundViewController *controller=[[RCBackgroundViewController alloc] initWithPublicKey:_client.remotePublicKey host:_client.host]; [self.navigationController pushViewController:controller animated:YES]; [controller release]; return; }
         if (indexPath.row == 3) {
             if (![RCCompanionClient forgetSavedConnection]) { [self setStatus:@"Could not remove the saved pairing. Unlock the device and try again."]; return; }
             _resumeConnection = NO; _client.delegate = nil; [_client release];

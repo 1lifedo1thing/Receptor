@@ -13,10 +13,13 @@
     BOOL _busy;
     BOOL _cancelled;
     BOOL _canUpload;
+    NSString *_remotePublicKey;
 }
 @property(nonatomic, assign) id<RCCompanionClientDelegate> delegate;
 @property(nonatomic, readonly) BOOL busy;
 @property(nonatomic, readonly) BOOL canUpload;
+@property(nonatomic, readonly, copy) NSString *remotePublicKey;
+@property(nonatomic, readonly, copy) NSString *host;
 + (NSDictionary *)savedConnection;
 + (BOOL)forgetSavedConnection;
 - (BOOL)connectToHost:(NSString *)host code:(NSString *)code error:(NSError **)error;

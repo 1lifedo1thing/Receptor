@@ -11,8 +11,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Receptor Desktop")]
 [assembly: AssemblyProduct("Receptor Desktop")]
-[assembly: AssemblyVersion("1.6.0.2")]
-[assembly: AssemblyFileVersion("1.6.0.2")]
+[assembly: AssemblyVersion("1.8.0.1")]
+[assembly: AssemblyFileVersion("1.8.0.1")]
 
 namespace ReceptorDesktop {
     static class Program {
@@ -34,28 +34,32 @@ namespace ReceptorDesktop {
         readonly TextBox receivePath = new TextBox { ReadOnly = true, Dock = DockStyle.Fill };
         readonly Button chooseFolder = new Button { Text = "Choose folder…", AutoSize = true };
         readonly Button openFolder = new Button { Text = "Open folder", AutoSize = true };
+        readonly CheckBox remoteAccess=new CheckBox {Text="Allow background device access",AutoSize=true};
+        readonly Button manage=new Button {Text="Manage device…",AutoSize=true,Enabled=false};
+        RemoteIdentity remoteIdentity;
         ReceiveOptions incoming;
         CompanionServer server;
         ConnectionSettings settings;
         readonly string settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Receptor", "pairing-v2.dat");
         bool adding;
         bool updatingReceiver;
+        bool updatingRemote;
         public CompanionForm() : this(null) { }
         internal CompanionForm(string preferencesPath) {
             if (preferencesPath != null) settingsPath = preferencesPath;
-            Text = "Receptor Desktop 1.6.0 beta 2"; ClientSize = new Size(700, 620); MinimumSize = new Size(620, 560);
+            Text = "Receptor Desktop 1.8.0 beta 1"; ClientSize = new Size(740, 660); MinimumSize = new Size(660, 600);
             Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterScreen;
             TableLayoutPanel layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 2, RowCount = 10 };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130)); layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             for (int i = 0; i < 10; i++) layout.RowStyles.Add(new RowStyle(i == 8 ? SizeType.Percent : SizeType.AutoSize, i == 8 ? 100 : 0));
-            Label intro = new Label { Text = "Transfer files both ways with Receptor 1.6.0 or later.\nPair once; your connection is remembered on both devices.", AutoSize = true, Margin = new Padding(0,0,0,14) };
+            Label intro = new Label { Text = "Transfer files and manage packages with Receptor 1.8.0 beta 1.\nPair once; optionally enable background access on your device.", AutoSize = true, Margin = new Padding(0,0,0,14) };
             layout.Controls.Add(intro,0,0); layout.SetColumnSpan(intro,2);
             layout.Controls.Add(new Label { Text = "PC address", AutoSize = true },0,1); layout.Controls.Add(addresses,1,1);
             FlowLayoutPanel actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
             actions.Controls.Add(start); actions.Controls.Add(reset); layout.Controls.Add(actions,1,2);
             layout.Controls.Add(new Label { Text = "Address", AutoSize = true },0,3); layout.Controls.Add(endpoint,1,3);
             layout.Controls.Add(new Label { Text = "Pairing code", AutoSize = true },0,4); layout.Controls.Add(code,1,4);
-            Label instruction = new Label { Text = "In Receptor, enter the address and short code once. It reconnects next time.\nTransfers use authenticated local HTTP; file contents are not encrypted.\nStop sharing pauses access. Reset pairing revokes remembered devices.", AutoSize = true, Margin = new Padding(0,10,0,10) };
+            Label instruction = new Label { Text = "Enter the address and code once in Receptor → Desktop.\nAdd files uses authenticated, unencrypted HTTP. Manage device uses encryption.\nStop sharing pauses access. Reset pairing revokes remembered devices.", AutoSize = true, Margin = new Padding(0,10,0,10) };
             layout.Controls.Add(instruction,0,5); layout.SetColumnSpan(instruction,2);
             TableLayoutPanel receiver = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2 };
             receiver.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -63,7 +67,8 @@ namespace ReceptorDesktop {
             receiver.Controls.Add(accept,0,0); receiver.SetColumnSpan(accept,3);
             receiver.Controls.Add(receivePath,0,1); receiver.Controls.Add(chooseFolder,1,1); receiver.Controls.Add(openFolder,2,1);
             layout.Controls.Add(receiver,0,6); layout.SetColumnSpan(receiver,2);
-            layout.Controls.Add(add,0,7); layout.Controls.Add(files,0,8); layout.SetColumnSpan(files,2);
+            FlowLayoutPanel deviceActions=new FlowLayoutPanel {Dock=DockStyle.Fill,AutoSize=true}; deviceActions.Controls.Add(add);deviceActions.Controls.Add(manage);deviceActions.Controls.Add(remoteAccess);layout.Controls.Add(deviceActions,0,7);layout.SetColumnSpan(deviceActions,2);
+            layout.Controls.Add(files,0,8); layout.SetColumnSpan(files,2);
             status.MaximumSize = new Size(640,0); status.MinimumSize = new Size(0,40);
             status.Margin = new Padding(0,10,0,0); layout.Controls.Add(status,0,9); layout.SetColumnSpan(status,2);
             Controls.Add(layout);
@@ -78,6 +83,8 @@ namespace ReceptorDesktop {
             try { incoming = ReceiveOptions.Load(settingsPath + ".receive"); }
             catch (Exception) { incoming = new ReceiveOptions(); status.Text = "Receive preferences were reset; choose a folder and enable receiving before starting sharing."; }
             accept.Checked = incoming.Enabled; receivePath.Text = incoming.Folder;
+            try {remoteIdentity=RemoteIdentity.Load(settingsPath+".remote");remoteAccess.Checked=remoteIdentity.Enabled;}
+            catch(Exception) {status.Text="Background identity could not be opened. Stop sharing and use Reset pairing before enabling remote access.";remoteAccess.Enabled=false;}
             if (addresses.Items.Count > 0) {
                 addresses.SelectedIndex = 0;
                 if (settings != null) for (int i = 0; i < addresses.Items.Count; i++)
@@ -87,6 +94,13 @@ namespace ReceptorDesktop {
             start.Click += delegate { Toggle(); }; add.Click += delegate { AddFiles(); }; reset.Click += delegate { ResetPairing(); };
             addresses.SelectedIndexChanged += delegate { ShowPairing(); };
             accept.CheckedChanged += delegate { UpdateReceiver(); };
+            remoteAccess.CheckedChanged+=delegate {
+                if(remoteIdentity==null || updatingRemote)return;
+                bool previous=remoteIdentity.Enabled;
+                try {remoteIdentity.Enabled=remoteAccess.Checked;remoteIdentity.Save(settingsPath+".remote");if(server!=null && server.Remote!=null)server.Remote.SetEnabled(remoteAccess.Checked);manage.Enabled=server!=null && remoteAccess.Checked;status.Text=remoteAccess.Checked?"Background access is available. Pair in Receptor, then enable Background desktop access once on the device. Compare the PC key shown by Manage device.":"Background control paused. Already dispatched operations may finish on the device; inspect its operation log before repeating them.";}
+                catch(Exception ex) {remoteIdentity.Enabled=previous;updatingRemote=true;remoteAccess.Checked=previous;updatingRemote=false;MessageBox.Show(this,ex.Message,"Could not change background access");}
+            };
+            manage.Click+=delegate {if(server!=null && server.Remote!=null && server.Remote.Enabled)new RemoteControlForm(server.Remote).Show(this);};
             ShowPairing();
             chooseFolder.Click += delegate {
                 using (FolderBrowserDialog dialog = new FolderBrowserDialog { Description = "Choose where files from your device are saved", SelectedPath = incoming.Folder }) {
@@ -130,7 +144,7 @@ namespace ReceptorDesktop {
         void Toggle() {
             if (server != null) {
                 CompanionServer previous = server; server = null; previous.Dispose();
-                files.Items.Clear(); ShowPairing();
+                files.Items.Clear(); ShowPairing(); manage.Enabled=false;
                 start.Text = "Start sharing"; addresses.Enabled = true; add.Enabled = false; reset.Enabled = true; accept.Enabled = chooseFolder.Enabled = true;
                 settings.AutoStart = false;
                 try { settings.Save(settingsPath); } catch (Exception) { status.Text = "Sharing stopped, but the startup preference could not be saved."; return; }
@@ -142,7 +156,8 @@ namespace ReceptorDesktop {
                 if (settings == null) throw new IOException("Use Reset pairing to replace unreadable saved settings.");
                 settings.Address = ip.ToString(); settings.AutoStart = true; settings.Save(settingsPath);
                 incoming.Enabled = accept.Checked; incoming.Save(settingsPath + ".receive");
-                server = new CompanionServer(ip, ConnectionSettings.ListenPort, settings, incoming); server.Status += SetStatus;
+                if(remoteIdentity!=null) {remoteIdentity.Enabled=remoteAccess.Checked;remoteIdentity.Save(settingsPath+".remote");}
+                server = new CompanionServer(ip, ConnectionSettings.ListenPort, settings, incoming,remoteIdentity); server.Status += SetStatus; manage.Enabled=remoteIdentity!=null && remoteAccess.Checked;
                 server.FileReceived += delegate(string name) {
                     if (!IsDisposed && IsHandleCreated) try { BeginInvoke((Action)delegate { files.Items.Add("Received → " + name); }); } catch (InvalidOperationException) { }
                 };
@@ -158,7 +173,8 @@ namespace ReceptorDesktop {
             try {
                 ConnectionSettings replacement = ConnectionSettings.Create();
                 replacement.Save(settingsPath); settings = replacement; ShowPairing();
-                status.Text = "Pairing reset. Start sharing and enter the new short code in Receptor.";
+                remoteIdentity=RemoteIdentity.Create();remoteIdentity.Save(settingsPath+".remote");remoteAccess.Enabled=true;remoteAccess.Checked=false;
+                status.Text = "Pairing reset. Old background grants are revoked too. Start sharing, pair with the new code and enable background access on the device again if wanted.";
             } catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not reset pairing", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
         void AddFiles() {
