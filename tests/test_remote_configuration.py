@@ -28,11 +28,18 @@ def main():
 import json,pathlib,plistlib,sys
 root=pathlib.Path(ROOT);op=sys.argv[1];calls=root/'launch-calls.json';values=json.loads(calls.read_text()) if calls.exists() else [];values.append(sys.argv[1:]);calls.write_text(json.dumps(values))
 if op=='list':
- assert sys.argv[2:]==['-x','com.receptor.remote']
+ if (root/'no-list').exists():sys.exit(7)
+ if '-x' in sys.argv and (root/'no-xml').exists():sys.exit(2)
+ if len(sys.argv)>2 and (root/'table-only').exists():sys.exit(2)
  if not (root/'loaded').exists():sys.exit(113)
  result={'Label':'com.receptor.remote','LastExitStatus':2 if (root/'failed').exists() else 0}
  if (root/'running').exists():result['PID']=12345
- sys.stdout.buffer.write(plistlib.dumps(result))
+ if len(sys.argv)==2:print('PID\tStatus\tLabel\n999\t0\tother.job\n'+str(result.get('PID','-'))+'\t'+str(result['LastExitStatus'])+'\tcom.receptor.remote')
+ elif '-x' not in sys.argv:
+  print('{\n "Label" = "com.receptor.remote";\n "LastExitStatus" = '+str(result['LastExitStatus'])+';')
+  if 'PID' in result:print(' "PID" = '+str(result['PID'])+';')
+  print('};')
+ else:sys.stdout.buffer.write(plistlib.dumps(result))
 elif op=='load':
  if (root/'load-failure').exists():sys.exit(5)
  (root/'loaded').write_text('yes')
@@ -65,10 +72,10 @@ else:sys.exit(2)
         print('PASS: explicit setup saves a private per-device secret, removes staged credentials and exposes only redacted background status')
         # Startup failures must not pretend that a saved grant is a connection.
         (base/'running').unlink();(base/'loaded').unlink();(base/'load-failure').write_text('yes')
-        assert 'could not be loaded' in run('remote-start')['error']
+        assert 'load failed (launchctl 5' in run('remote-start')['error']
         assert run('remote-status')['serviceLoaded'] is False
         (base/'load-failure').unlink();(base/'start-failure').write_text('yes')
-        assert 'could not start' in run('remote-start')['error']
+        assert 'start failed (launchctl 5' in run('remote-start')['error']
         (base/'start-failure').unlink();assert run('remote-start')['enabled']
         assert run('remote-status')['serviceRunning']
         (base/'running').unlink();(base/'failed').write_text('yes')
@@ -78,6 +85,18 @@ else:sys.exit(2)
         count=len(json.loads((base/'launch-calls.json').read_text()))
         assert run('remote-start')['enabled']
         assert json.loads((base/'launch-calls.json').read_text())[count:]==[['list','-x','com.receptor.remote']]
+        (base/'no-xml').write_text('yes');assert run('remote-status')['serviceRunning']
+        (base/'running').unlink();(base/'failed').write_text('yes')
+        assert 'last exit 2' in run('remote-status')['output']
+        assert run('remote-start')['serviceRunning']
+        (base/'table-only').write_text('yes');assert run('remote-status')['serviceRunning']
+        (base/'running').unlink();assert 'last exit 2' in run('remote-status')['output']
+        assert run('remote-start')['serviceRunning']
+        (base/'no-list').write_text('yes')
+        unknown=run('remote-start');assert unknown['enabled'] and not unknown['serviceStatusKnown'] and 'error' not in unknown
+        assert 'could not verify' in run('remote-status')['output']
+        (base/'no-list').unlink();(base/'table-only').unlink();(base/'no-xml').unlink();(base/'failed').unlink()
+        print('PASS: unsupported XML/single-job queries fall back to legacy dictionaries/tables; successful load/start with unavailable listing is not a launchctl 0 failure')
         heartbeat=base/'var/lib/receptor/remote-status.plist'
         def report(date,device=saved['device']):
             heartbeat.write_bytes(plistlib.dumps({'device':device,'updated':date,'message':'Fixture connection error'}));heartbeat.chmod(0o600)

@@ -244,24 +244,49 @@ static void WriteManagedSource(NSString *uri, BOOL remove) {
     if (!valid) unlink(buffer); free(buffer); Require(valid, @"Could not save sources; the old file was preserved.");
 }
 #if !defined(RC_PACKAGE_TEST) || defined(RC_REMOTE_HOST_TEST)
+static NSNumber *RemoteServiceInteger(NSString *text,NSString *key) {
+    NSString *prefix=[NSString stringWithFormat:@"\"%@\"",key];
+    for(NSString *raw in [text componentsSeparatedByString:@"\n"]) {
+        NSString *line=[raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        if(![line hasPrefix:prefix])continue;
+        NSScanner *scanner=[NSScanner scannerWithString:[line substringFromIndex:[prefix length]]]; int value=0;
+        if([scanner scanString:@"=" intoString:NULL] && [scanner scanInt:&value])return [NSNumber numberWithInt:value];
+    }
+    return nil;
+}
+static NSDictionary *RemoteServiceQuery(void) {
+    NSString *binary=@RC_LAUNCHCTL_BINARY,*label=@"com.receptor.remote"; int last=0;
+    NSArray *queries=[NSArray arrayWithObjects:[NSArray arrayWithObjects:@"list",@"-x",label,nil],[NSArray arrayWithObjects:@"list",label,nil],[NSArray arrayWithObject:@"list"],nil];
+    for(NSArray *query in queries) {
+        NSDictionary *listed=Run(binary,query); last=[[listed objectForKey:@"status"] intValue]; if(last)continue;
+        NSString *text=[listed objectForKey:@"output"]; NSError *error=nil;
+        id details=[NSPropertyListSerialization propertyListWithData:[text dataUsingEncoding:NSUTF8StringEncoding] options:NSPropertyListImmutable format:NULL error:&error];
+        NSNumber *pid=nil,*exit=nil; BOOL found=NO;
+        if([details isKindOfClass:[NSDictionary class]] && [[details objectForKey:@"Label"] isEqual:label]) {found=YES;pid=[details objectForKey:@"PID"];exit=[details objectForKey:@"LastExitStatus"];}
+        if(!found && [text rangeOfString:@"\"Label\""].location!=NSNotFound && [text rangeOfString:[NSString stringWithFormat:@"\"%@\"",label]].location!=NSNotFound) {found=YES;pid=RemoteServiceInteger(text,@"PID");exit=RemoteServiceInteger(text,@"LastExitStatus");}
+        if(!found && [query count]==1)for(NSString *line in [text componentsSeparatedByString:@"\n"]) {
+            NSMutableArray *fields=[NSMutableArray array]; for(NSString *part in [line componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]])if([part length])[fields addObject:part];
+            if([fields count]==3 && [[fields objectAtIndex:2] isEqual:label]) {found=YES;pid=[NSNumber numberWithInt:[[fields objectAtIndex:0] intValue]];exit=[NSNumber numberWithInt:[[fields objectAtIndex:1] intValue]];break;}
+        }
+        if(found)return [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"serviceLoaded",[NSNumber numberWithBool:[pid intValue]>0],@"serviceRunning",exit?:[NSNumber numberWithInt:0],@"lastExitStatus",[NSNumber numberWithBool:YES],@"serviceStatusKnown",[NSNumber numberWithInt:last],@"serviceQueryStatus",nil];
+    }
+    return [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:NO],@"serviceLoaded",[NSNumber numberWithBool:NO],@"serviceRunning",[NSNumber numberWithBool:NO],@"serviceStatusKnown",[NSNumber numberWithInt:last],@"serviceQueryStatus",nil];
+}
 static NSDictionary *RemoteService(BOOL start) {
     NSString *binary=@RC_LAUNCHCTL_BINARY,*label=@"com.receptor.remote";
     Require(access([binary fileSystemRepresentation],X_OK)==0,@"launchctl is missing; reinstall the jailbreak's launchctl package through Cydia.");
-    NSDictionary *listed=Run(binary,[NSArray arrayWithObjects:@"list",@"-x",label,nil]);
-    BOOL loaded=[[listed objectForKey:@"status"] intValue]==0;
-    if(start && !loaded) {
+    NSDictionary *state=RemoteServiceQuery();
+    if(start && ![[state objectForKey:@"serviceLoaded"] boolValue]) {
         NSDictionary *load=Run(binary,[NSArray arrayWithObjects:@"load",@"-w",@"/Library/LaunchDaemons/com.receptor.remote.plist",nil]);
-        listed=Run(binary,[NSArray arrayWithObjects:@"list",@"-x",label,nil]); loaded=[[listed objectForKey:@"status"] intValue]==0;
-        Require(loaded, [NSString stringWithFormat:@"Background service could not be loaded (launchctl %d). Reinstall Receptor through Cydia, then retry.",[[load objectForKey:@"status"] intValue]]);
+        state=RemoteServiceQuery();
+        Require([[load objectForKey:@"status"] intValue]==0 || [[state objectForKey:@"serviceLoaded"] boolValue], [NSString stringWithFormat:@"Background service load failed (launchctl %d; list %d). Reinstall Receptor through Cydia, then retry.",[[load objectForKey:@"status"] intValue],[[state objectForKey:@"serviceQueryStatus"] intValue]]);
     }
-    NSError *error=nil; id details=[NSPropertyListSerialization propertyListWithData:[[listed objectForKey:@"output"] dataUsingEncoding:NSUTF8StringEncoding] options:NSPropertyListImmutable format:NULL error:&error];
-    if(![details isKindOfClass:[NSDictionary class]])details=[NSDictionary dictionary];
-    BOOL running=[[details objectForKey:@"PID"] intValue]>0;
-    if(start && !running) {
+    if(start && ![[state objectForKey:@"serviceRunning"] boolValue]) {
         NSDictionary *started=Run(binary,[NSArray arrayWithObjects:@"start",label,nil]);
-        Require([[started objectForKey:@"status"] intValue]==0,@"launchctl could not start the background service. Reinstall Receptor through Cydia, then retry.");
+        state=RemoteServiceQuery();
+        Require([[started objectForKey:@"status"] intValue]==0 || [[state objectForKey:@"serviceRunning"] boolValue],[NSString stringWithFormat:@"Background service start failed (launchctl %d; list %d). Reinstall Receptor through Cydia, then retry.",[[started objectForKey:@"status"] intValue],[[state objectForKey:@"serviceQueryStatus"] intValue]]);
     }
-    return [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:loaded],@"serviceLoaded",[NSNumber numberWithBool:running],@"serviceRunning",[NSNumber numberWithInt:[[details objectForKey:@"LastExitStatus"] intValue]],@"lastExitStatus",nil];
+    return state;
 }
 #endif
 static NSDictionary *RemoteConfiguration(NSArray *args) {
@@ -283,6 +308,7 @@ static NSDictionary *RemoteConfiguration(NSArray *args) {
             NSDictionary *status=RCRemoteRead(Path(@"/var/lib/receptor/remote-status.plist")); id date=[status objectForKey:@"updated"]?:[status objectForKey:@"lastConnected"];
             BOOL recent=[date isKindOfClass:[NSDate class]] && fabs([date timeIntervalSinceNow])<60;
             NSString *message=[[result objectForKey:@"serviceRunning"] boolValue]?@"Service running; no recent connection status is available.":[NSString stringWithFormat:@"Background permission is saved, but the service is not running (last exit %d). Tap Restart service / Retry connection.",[[result objectForKey:@"lastExitStatus"] intValue]];
+            if(![[result objectForKey:@"serviceStatusKnown"] boolValue])message=@"Background permission is saved. This launchctl could not verify the service status; tap Retry, then check for a connection or diagnostic here.";
             if(recent && [[status objectForKey:@"device"] isEqual:[config objectForKey:@"device"]] && [status objectForKey:@"message"]) message=[status objectForKey:@"message"];
             if([operation isEqual:@"remote-start"])message=@"Start requested. Connection status will refresh automatically.";
             [result setObject:message forKey:@"output"];

@@ -4,7 +4,7 @@ A small Windows companion for transferring files and managing Receptor devices o
 
 ## Background access and package management (1.8.0 beta 1)
 
-Use iOS **1.8.0b2** for explicit background-service startup, a service Retry button and automatic connection diagnostics. The Windows **1.8.0 beta 1** executable is unchanged. If a beta 1 device grant is enabled but no device appears, upgrade iOS and tap **Restart service / Retry connection** on its Background desktop access screen. Saved permission alone is not proof of a live connection.
+Use iOS **1.8.0b3** for explicit background-service startup, legacy launchctl query compatibility, a service Retry button and automatic connection diagnostics. Beta 3 fixes the misleading launchctl 0 verification error and adds confirmation before Forget saved connection. The Windows **1.8.0 beta 1** executable is unchanged. If a device grant is enabled but no device appears, upgrade iOS and tap **Restart service / Retry connection** on its Background desktop access screen. Saved permission alone is not proof of a live connection.
 
 Update both apps to 1.8.0 beta 1. Enable **Allow background device access**, click **Start sharing**, then **Manage device…**. On the iPad, connect/refresh in Desktop, open **Background desktop access…** and compare the PC key before enabling it once. The saved grant reconnects with the app closed or after reboot whenever Wi-Fi is reachable. Keep this Windows app running (it can be minimized); no Windows service or sign-in startup is installed. iOS sleeping Wi-Fi behavior depends on power/OS, so unattended reachability is not guaranteed.
 

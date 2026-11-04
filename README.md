@@ -18,9 +18,11 @@ GitHub Pages enforces HTTPS. Some legacy Cydia clients may not support its TLS/c
 
 Requires a rootful jailbreak and Cydia Substrate. The jailbreak must permit access to `/var/mobile/Media/Receptor/`. No global sandbox patch or certificate-validation bypass is installed. A compatible AppSync setup may be needed for IPAs that are not validly signed for the device; it is not installed automatically.
 
-## Desktop management and background access (1.8.0b2)
+## Desktop management and background access (1.8.0b3)
 
-Update Receptor to **1.8.0b2** using the [beta 2 release](https://github.com/jajaengland/Receptor/releases/tag/v1.8.0-beta2); keep **Receptor Desktop 1.8.0 beta 1** on Windows. On Windows, enable **Allow background device access**, start sharing and open **Manage device…**. On the iPad, connect/refresh in **Desktop**, open **Background desktop access…**, compare the PC key and enable it once. Existing foreground pairings remain compatible.
+Update Receptor to **1.8.0b3** using the [beta 3 release](https://github.com/jajaengland/Receptor/releases/tag/v1.8.0-beta3); keep **Receptor Desktop 1.8.0 beta 1** on Windows. On Windows, enable **Allow background device access**, start sharing and open **Manage device…**. On the iPad, connect/refresh in **Desktop**, open **Background desktop access…**, compare the PC key and enable it once. Existing foreground pairings remain compatible.
+
+Beta 3 fixes beta 2's misleading **launchctl 0** failure: service queries now fall back from XML to legacy dictionary/table formats, and successful load/start commands are not rejected solely because listing is unavailable. An unavailable status is distinguished from a failed command; actual device startup still needs confirmation. **Forget saved connection** now asks Cancel/Forget before removing the pairing and revoking background access. Cancel preserves it; a confirmation dismissed while the app is inactive cannot delete the pairing.
 
 Beta 2 explicitly loads/starts the background service when access is enabled, instead of relying only on a filesystem trigger. For an existing beta 1 grant, tap **Restart service / Retry connection** once after updating. This starts a missing/stopped service without stopping a running one. The screen now distinguishes saved permission from connection state, refreshes diagnostics automatically and reports launchctl, network and authentication failures. This addresses a startup gap; the exact cause of the first reported device connection failure is not yet confirmed.
 

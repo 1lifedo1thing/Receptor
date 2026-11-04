@@ -1,10 +1,10 @@
-# Background desktop access: 1.8.0 beta 2
+# Background desktop access: 1.8.0 beta 3
 
 This beta needs physical-device testing. Host tests cover the production native agent, Windows broker, crypto, file helper and setup validation, using disposable credentials and fake package commands. They do not establish that launchd, locked Wi-Fi, root/mobile permissions or APT work on every supported jailbreak.
 
 ## One-time setup
 
-1. Update Receptor to **1.8.0b2** and use **ReceptorDesktop.exe 1.8.0 beta 1** (unchanged). Keep Cydia closed during package operations.
+1. Update Receptor to **1.8.0b3** and use **ReceptorDesktop.exe 1.8.0 beta 1** (unchanged). Fully close/reopen Receptor after updating. Keep Cydia closed during package operations.
 2. On Windows, enable **Allow background device access** and **Start sharing**. Open **Manage device…** to see the PC key fingerprint.
 3. In Receptor → **Desktop**, connect/refresh using your saved pairing (or pair once with the address/code).
 4. Open **Background desktop access…**, tap Enable and compare the displayed PC key with Windows. Confirm only the intended PC.
@@ -13,6 +13,8 @@ This beta needs physical-device testing. Host tests cover the production native 
 The grant authorizes the paired PC to install/remove packages, edit sources, request a respring and transfer download-folder files without touching the iPad again, including while locked. APT plans still require confirmation on the PC. It persists across app closure and reboots until revoked. Do not enable it on a shared or untrusted PC. No root password or arbitrary remote shell is exposed.
 
 ## If Windows says no background device is connected
+
+Beta 3 fixes a beta 2 verification bug: a successful `load` exit status 0 was reported as a failure if `list -x` failed. Queries now accept XML, a legacy labelled dictionary or the full job table. If listing remains unavailable, a successful load/start is not reported as failure; connection diagnostics remain the check for actual connectivity. Nonzero load/start errors are still reported. Test all three query formats with the host fixture and confirm the real device can connect before claiming this resolves its underlying startup issue.
 
 Beta 1's enabled label only meant that permission was saved. It relied on the launchd PathState trigger and did not explicitly load/start the service when enabling. Beta 2 adds fixed launchctl load/start calls, refreshed status and network/authentication diagnostics. It does not establish the cause of every connection failure.
 
@@ -29,6 +31,7 @@ For an existing grant, open Background desktop access and tap **Restart service 
 - Start a long operation, lose the connection, then inspect **Log → Device operation log** and Installed before repeating it. An interrupted result is uncertain; commands must not be replayed automatically. A command already running may finish after Stop sharing or revocation. Receptor never deletes dpkg/APT lock files.
 - Try an app IPA/DEB installation while remote APT is active: the shared operation lock must refuse concurrent changes. Respring needs explicit desktop confirmation and must respect package-manager locks. Finish transfers before restarting the UI.
 - Disable background access on the device: Windows must stop receiving results/dispatching further work. Repeated Disable is safe. **Forget saved connection** revokes background access before deleting the Keychain pairing. **Reset pairing** on Windows revokes old enrollment proofs and replaces its RSA identity; a fresh foreground grant is required.
+- In beta 3, tap **Forget saved connection**, then Cancel: address, pairing, file list and background grant must remain. Try backgrounding the app with the prompt visible: this cancels it. Only an explicit active-app Forget confirmation should revoke access and remove the pairing. Re-pair after testing the confirmed action. Confirm the received-DEB installation prompt still behaves independently.
 - Close Windows while sharing is enabled and reopen: its saved sharing preference resumes, but the companion does not install a Windows service or register automatic sign-in startup. Allow private-network firewall access if asked.
 - Remove Receptor: the grant is deleted and the launchd job unloaded. Upgrade while no operation is active and verify reconnection. Do not interrupt a device package-manager transaction to test upgrades.
 

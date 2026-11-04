@@ -1,6 +1,6 @@
 Package: com.receptor.downloadmanager
 Name: Receptor
-Version: 1.8.0b2
+Version: 1.8.0b3
 Architecture: iphoneos-arm
 Description: Safari downloads, file browser and APT package manager for 32-bit iOS 4-8; experimental beta.
 Maintainer: Receptor

@@ -8,6 +8,7 @@
     NSString *_status;
     NSString *_pendingName;
     UIAlertView *_installPrompt;
+    UIAlertView *_forgetPrompt;
     BOOL _visible;
     BOOL _resumeConnection;
 }

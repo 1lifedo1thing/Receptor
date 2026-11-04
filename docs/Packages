@@ -300,3 +300,22 @@ MD5sum: 1596384366bef17990deac147260477d
 SHA1: 8b1cf020213a7bb3b38245061b8a1d9ebeb2c923
 SHA256: 8389c2857f4c8cbf7811ff3addbce3443dc65ed6ed7a60c6c450fa1b2410cd7f
 
+Package: com.receptor.downloadmanager
+Name: Receptor
+Description: Safari downloads, file browser and APT package manager for 32-bit iOS 4-8; experimental beta.
+Maintainer: Receptor
+Author: Receptor
+Section: Tweaks
+Depends: mobilesubstrate, dpkg, apt7 | apt, firmware (>= 4.0), firmware (<< 9.0)
+Homepage: https://github.com/jajaengland/Receptor
+Depiction: https://jajaengland.github.io/repo/depictions/receptor.html
+Icon: file:///Applications/Receptor.app/Icon.png
+Architecture: iphoneos-arm
+Version: 1.8.0b3
+Installed-Size: 4112
+Filename: debs/com.receptor.downloadmanager_1.8.0b3_iphoneos-arm.deb
+Size: 971470
+MD5sum: d05be37bddc1a1c0ad30eccb79d43d93
+SHA1: 2428379d3c053292b9c53d974be665efd648ef1c
+SHA256: 49c0366941ea26b107242a9199ba4297e6345e033c8599ad65169f4845005a26
+
