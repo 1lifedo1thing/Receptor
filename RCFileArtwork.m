@@ -5,6 +5,11 @@
 #import <ImageIO/ImageIO.h>
 #import <MobileCoreServices/UTType.h>
 #import <MobileCoreServices/UTCoreTypes.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <string.h>
 
 BOOL RCIsImageFile(NSString *name) {
     CFStringRef type = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, (CFStringRef)[name pathExtension], NULL);
@@ -14,6 +19,33 @@ BOOL RCIsImageFile(NSString *name) {
 }
 UIImage *RCLoadImageThumbnail(NSString *name, NSUInteger pixels) {
     if (!RCIsRegularDownload(name)) return nil;
+#if RC_LEGACY32
+    /* No ImageIO on 3.2. Limit full-image decoding, and use generic grid icons. */
+    if(pixels<500)return nil;
+    NSString *path=[RCDownloadsDirectory stringByAppendingPathComponent:name];
+    int fd=open([path fileSystemRepresentation],O_RDONLY|O_NOFOLLOW|O_NONBLOCK);struct stat info;
+    if(fd<0)return nil;if(fstat(fd,&info) || !S_ISREG(info.st_mode) || info.st_size<=0 || info.st_size>8*1024*1024) {close(fd);return nil;}
+    NSMutableData *data=[NSMutableData dataWithLength:(NSUInteger)info.st_size];NSUInteger done=0;
+    while(done<[data length]) {ssize_t count=read(fd,(unsigned char *)[data mutableBytes]+done,[data length]-done);if(count<0 && errno==EINTR)continue;if(count<=0)break;done+=(NSUInteger)count;}close(fd);if(done!=[data length])return nil;
+    const unsigned char *bytes=[data bytes];NSUInteger length=[data length];unsigned int width=0,height=0;
+    if(length>=24 && !memcmp(bytes,"\x89PNG\r\n\x1a\n",8) && !memcmp(bytes+12,"IHDR",4)) {
+        width=((unsigned int)bytes[16]<<24)|((unsigned int)bytes[17]<<16)|((unsigned int)bytes[18]<<8)|bytes[19];
+        height=((unsigned int)bytes[20]<<24)|((unsigned int)bytes[21]<<16)|((unsigned int)bytes[22]<<8)|bytes[23];
+    } else if(length>=4 && bytes[0]==255 && bytes[1]==216) {
+        NSUInteger offset=2;
+        while(offset+4<=length) {
+            if(bytes[offset++]!=255)break;while(offset<length && bytes[offset]==255)offset++;if(offset>=length)break;
+            unsigned char marker=bytes[offset++];if(marker==0xda || marker==0xd9)break;if(marker==0x01 || (marker>=0xd0 && marker<=0xd7))continue;
+            if(offset+2>length)break;NSUInteger count=((NSUInteger)bytes[offset]<<8)|bytes[offset+1];if(count<2 || count>length-offset)break;
+            if((marker>=0xc0 && marker<=0xc3) || (marker>=0xc5 && marker<=0xc7) || (marker>=0xc9 && marker<=0xcb) || (marker>=0xcd && marker<=0xcf)) {
+                if(count<8)break;height=((unsigned int)bytes[offset+3]<<8)|bytes[offset+4];width=((unsigned int)bytes[offset+5]<<8)|bytes[offset+6];break;
+            }offset+=count;
+        }
+    }
+    if(!width || !height || width>8192 || height>8192 || (unsigned long long)width*height>3000000)return nil;
+    UIImage *image=[UIImage imageWithData:data];if(!image.CGImage || (unsigned long long)CGImageGetWidth(image.CGImage)*CGImageGetHeight(image.CGImage)>3000000)return nil;
+    return image;
+#else
     NSURL *url = [NSURL fileURLWithPath:[RCDownloadsDirectory stringByAppendingPathComponent:name]];
     NSDictionary *sourceOptions = [NSDictionary dictionaryWithObject:[NSNumber numberWithBool:NO] forKey:(id)kCGImageSourceShouldCache];
     CGImageSourceRef source = CGImageSourceCreateWithURL((CFURLRef)url, (CFDictionaryRef)sourceOptions);
@@ -38,12 +70,17 @@ UIImage *RCLoadImageThumbnail(NSString *name, NSUInteger pixels) {
     UIImage *result = image ? [UIImage imageWithCGImage:image] : nil;
     if (image) CGImageRelease(image);
     return result;
+#endif
 }
 UIImage *RCFileIcon(NSString *name) {
     NSString *extension = [[name pathExtension] uppercaseString];
     if (![extension length] || [extension length] > 6) extension = @"FILE";
     UIColor *blue = [UIColor colorWithRed:0.12f green:0.47f blue:0.89f alpha:1];
+#if RC_LEGACY32
+    UIGraphicsBeginImageContext(CGSizeMake(100,100));
+#else
     UIGraphicsBeginImageContextWithOptions(CGSizeMake(100, 100), NO, 1);
+#endif
     UIBezierPath *paper = [UIBezierPath bezierPath];
     [paper moveToPoint:CGPointMake(22, 5)]; [paper addLineToPoint:CGPointMake(64, 5)];
     [paper addLineToPoint:CGPointMake(82, 23)]; [paper addLineToPoint:CGPointMake(82, 94)];
@@ -147,7 +184,11 @@ UIImage *RCFileIcon(NSString *name) {
     UIBarButtonItem *space = [[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
     UIBarButtonItem *open = [[[UIBarButtonItem alloc] initWithTitle:@"Open In…" style:UIBarButtonItemStylePlain target:self action:@selector(openIn)] autorelease];
     self.toolbarItems = [NSArray arrayWithObjects:save, space, open, nil];
+#if RC_LEGACY32
+    [self loadImage]; // UIKit's pre-iOS 4 image decoding stays on the main thread.
+#else
     [NSThread detachNewThreadSelector:@selector(loadImage) toTarget:self withObject:nil];
+#endif
 }
 - (void)loadImage {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
@@ -156,7 +197,11 @@ UIImage *RCFileIcon(NSString *name) {
 }
 - (void)displayImage:(UIImage *)image {
     [_spinner stopAnimating]; _imageView.image = image;
+#if RC_LEGACY32
+    _message.text = image ? nil : @"The 3.2 preview supports PNG/JPEG up to 3 megapixels and 8 MB.\nUse Open In or send larger/other images to your PC.";
+#else
     _message.text = image ? nil : @"This image is unsupported or too large for legacy preview.\nUse the action button to open it in another app.";
+#endif
     [self fitImage];
 }
 - (void)fitImage {

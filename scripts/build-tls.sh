@@ -4,6 +4,8 @@ set -euo pipefail
 : "${THEOS:?Set THEOS first}"
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cache="$root/build/tls-cache"
+minimum="${RECEPTOR_MIN_IOS:-4.0}"
+case "$minimum" in 3.2) destination="$root/vendor/tls32" ;; 4.0) destination="$root/vendor/tls" ;; *) echo 'Supported TLS targets: 3.2 or 4.0' >&2; exit 2 ;; esac
 mkdir -p "$cache" "$root/vendor/tls/lib" "$root/vendor/tls/include" "$root/vendor/tls/licenses"
 fetch() {
     local name="$1" url="$2" expected="$3"
@@ -18,7 +20,7 @@ tar -xf "$cache/mbedtls-3.6.7.tar.bz2" -C "$work"
 tar -xf "$cache/curl-8.23.0.tar.xz" -C "$work"
 tool="$THEOS/toolchain/linux/iphone/bin"
 sdk="$THEOS/sdks/iPhoneOS5.0.sdk"
-flags="--target=armv7-apple-ios4.0 -B$tool -isysroot $sdk -miphoneos-version-min=4.0 -Os -fPIC -DMBEDTLS_PLATFORM_MS_TIME_ALT -DMBEDTLS_THREADING_C -DMBEDTLS_THREADING_PTHREAD"
+flags="--target=armv7-apple-ios$minimum -B$tool -isysroot $sdk -miphoneos-version-min=$minimum -Os -fPIC -DMBEDTLS_PLATFORM_MS_TIME_ALT -DMBEDTLS_THREADING_C -DMBEDTLS_THREADING_PTHREAD"
 make -C "$work/mbedtls-3.6.7" -j4 lib CC="$tool/clang" AR="$tool/llvm-ar" CFLAGS="$flags" > "$root/build/mbedtls-build.log" 2>&1
 "$tool/clang" $flags -c "$root/scripts/tls-clock.c" -o "$work/tls-clock.o"
 "$tool/llvm-ar" rcs "$work/mbedtls-3.6.7/library/libmbedcrypto.a" "$work/tls-clock.o"
@@ -40,11 +42,12 @@ CC="$tool/clang" AR="$tool/llvm-ar" RANLIB="$tool/llvm-ranlib" \
  --without-ca-path --with-ca-bundle='/Library/Application Support/Receptor/cacert.pem' \
  > "$root/build/curl-configure.log" 2>&1
 make -j4 -C lib > "$root/build/curl-build.log" 2>&1
-cp lib/.libs/libcurl.a "$root/vendor/tls/lib/"
-cp "$prefix/lib/"*.a "$root/vendor/tls/lib/"
+mkdir -p "$destination/lib"
+cp lib/.libs/libcurl.a "$destination/lib/"
+cp "$prefix/lib/"*.a "$destination/lib/"
 mkdir -p "$root/vendor/tls/include/curl"
 cp include/curl/*.h "$root/vendor/tls/include/curl/"
 cp -R "$prefix/include/mbedtls" "$prefix/include/psa" "$root/vendor/tls/include/"
 cp COPYING "$root/vendor/tls/licenses/curl.txt"
 cp "$work/mbedtls-3.6.7/LICENSE" "$root/vendor/tls/licenses/mbedtls.txt"
-printf 'Built curl 8.23.0 + Mbed TLS 3.6.7 for armv7 / iOS 4.0.\n'
+printf 'Built curl 8.23.0 + Mbed TLS 3.6.7 for armv7 / iOS %s.\n' "$minimum"

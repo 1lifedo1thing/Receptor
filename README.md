@@ -4,6 +4,8 @@ Safari downloads, a standalone file browser and IPA/DEB installation for **jailb
 
 ## Install
 
+**iPad 1 on iPhone OS 3.2:** a separate experimental **Receptor (iPhone OS 3.2)** package is available in the same repo. Use the [3.2 beta release](https://github.com/jajaengland/Receptor/releases/tag/v1.8.0-ios32-beta1) and [port notes/device checklist](Legacy32/README.md). It disables background desktop access and uses legacy preview/Photos/plist APIs. Compiled and checked for startup dependencies; physical-device validation is pending. The regular package below still requires iOS 4.0 or later.
+
 Add this source in Cydia → Sources → Edit → Add:
 
 ```text

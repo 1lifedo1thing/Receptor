@@ -15,6 +15,35 @@ static BOOL RCIsVideoFile(NSString *name) {
     NSString *extension = [[name pathExtension] lowercaseString];
     return [extension isEqualToString:@"mov"] || [extension isEqualToString:@"mp4"] || [extension isEqualToString:@"m4v"];
 }
+#if RC_LEGACY32
+@interface RCPhotoSaver : NSObject { BOOL _busy; UIImage *_image; NSString *_name; }
++ (RCPhotoSaver *)sharedSaver;
+- (void)save:(NSString *)name;
+- (void)image:(UIImage *)image didFinishSavingWithError:(NSError *)error contextInfo:(void *)context;
+- (void)video:(NSString *)path didFinishSavingWithError:(NSError *)error contextInfo:(void *)context;
+@end
+@implementation RCPhotoSaver
++ (RCPhotoSaver *)sharedSaver {static RCPhotoSaver *saver=nil;if(!saver)saver=[[self alloc] init];return saver;}
+- (void)save:(NSString *)name {
+    if(_busy || !RCIsRegularDownload(name)) {[[ReceptorUI sharedUI] showMessage:@"Wait for Photos to finish, and select an available file."];return;}
+    NSString *path=[RCDownloadsDirectory stringByAppendingPathComponent:name];
+    if(RCIsVideoFile(name)) {
+        if(!UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(path)) {[[ReceptorUI sharedUI] showMessage:@"This video is not supported by the iPhone OS 3.2 Photos importer."];return;}
+        _busy=YES;_name=[name copy];UISaveVideoAtPathToSavedPhotosAlbum(path,self,@selector(video:didFinishSavingWithError:contextInfo:),NULL);
+    } else {
+        _image=[RCLoadImageThumbnail(name,1600) retain];
+        if(!_image) {[[ReceptorUI sharedUI] showMessage:@"The 3.2 image importer supports PNG/JPEG up to 3 megapixels and 8 MB. Use Open In or send larger/other images to your PC."];return;}
+        _busy=YES;_name=[name copy];UIImageWriteToSavedPhotosAlbum(_image,self,@selector(image:didFinishSavingWithError:contextInfo:),NULL);
+    }
+}
+- (void)image:(UIImage *)image didFinishSavingWithError:(NSError *)error contextInfo:(void *)context {
+    (void)image;(void)context;_busy=NO;[_image release];_image=nil;
+    [[ReceptorUI sharedUI] showMessage:error?[error localizedDescription]:[NSString stringWithFormat:@"%@ was saved to Photos.",_name]];[_name release];_name=nil;
+}
+- (void)video:(NSString *)path didFinishSavingWithError:(NSError *)error contextInfo:(void *)context {(void)path;[self image:nil didFinishSavingWithError:error contextInfo:context];}
+- (void)dealloc {[_image release];[_name release];[super dealloc];}
+@end
+#else
 @interface RCPhotoSaver : NSObject {
     ALAssetsLibrary *_library;
     NSData *_data;
@@ -97,6 +126,7 @@ static BOOL RCIsVideoFile(NSString *name) {
 }
 - (void)dealloc { [_library release]; [_data release]; [_image release]; [_name release]; [super dealloc]; }
 @end
+#endif
 
 @interface RCFileShareController ()
 - (void)dismissSharing;
@@ -124,7 +154,11 @@ static BOOL RCIsVideoFile(NSString *name) {
 - (void)shareFile:(NSString *)name fromRect:(CGRect)rect {
     if (![self selectFile:name rect:rect]) return;
     Class activityClass = NSClassFromString(@"UIActivityViewController");
+#if RC_LEGACY32
+    activityClass=Nil;
+#endif
     if (activityClass) {
+#if !RC_LEGACY32
         NSURL *url = [NSURL fileURLWithPath:[RCDownloadsDirectory stringByAppendingPathComponent:_name]];
         _activity = [[activityClass alloc] initWithActivityItems:[NSArray arrayWithObject:url] applicationActivities:nil];
         __block RCFileShareController *unretainedSelf = self; // MRC __block avoids a controller/block retain cycle.
@@ -133,6 +167,7 @@ static BOOL RCIsVideoFile(NSString *name) {
             _popover = [[UIPopoverController alloc] initWithContentViewController:_activity]; _popover.delegate = self;
             [_popover presentPopoverFromRect:rect inView:_owner.view permittedArrowDirections:UIPopoverArrowDirectionAny animated:YES];
         } else [_owner presentModalViewController:_activity animated:YES];
+#endif
     } else {
         _sheet = [[UIActionSheet alloc] initWithTitle:_name delegate:self cancelButtonTitle:nil destructiveButtonTitle:nil otherButtonTitles:nil];
         if ([[self class] canSaveToPhotos:_name]) [_sheet addButtonWithTitle:@"Save to Photos"];

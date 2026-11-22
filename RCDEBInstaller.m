@@ -1,4 +1,5 @@
 #import "RCDEBInstaller.h"
+#import "RCCompatibility32.h"
 #import "RCIPAInstaller.h"
 #import "ReceptorPaths.h"
 #import "ReceptorUI.h"
@@ -64,13 +65,13 @@ static BOOL RCDebCreatePipe(int descriptors[2]) {
     }
     _busy = YES;
     [self setInstallStatus:@"Preparing DEB…"];
-    _backgroundTask = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
+    _backgroundTask = RCBeginBackgroundTask(^{
         // Never kill dpkg halfway through a transaction. The helper can finish
         // independently; the UI reads its result when execution resumes.
         UIBackgroundTaskIdentifier task = _backgroundTask;
         _backgroundTask = UIBackgroundTaskInvalid;
         if (task != UIBackgroundTaskInvalid) [[UIApplication sharedApplication] endBackgroundTask:task];
-    }];
+    });
     [NSThread detachNewThreadSelector:@selector(installOnWorker:) toTarget:self withObject:[[name copy] autorelease]];
 }
 - (void)installOnWorker:(NSString *)name {

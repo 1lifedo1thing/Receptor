@@ -163,6 +163,7 @@ static size_t RCCompanionRead(char *bytes, size_t size, size_t count, void *poin
         RCHexString([saved objectForKey:@"key"], 64) && RCHexString([saved objectForKey:@"salt"], 32) ? saved : nil;
 }
 + (BOOL)forgetSavedConnection {
+#if !RC_LEGACY32
     // Revoke the separate background grant before removing the foreground Keychain record.
     const char *helper="/usr/libexec/receptor-package-helper";
     struct stat info;
@@ -183,6 +184,7 @@ static size_t RCCompanionRead(char *bytes, size_t size, size_t count, void *poin
             lseek(fd,0,SEEK_SET); NSMutableData *data=[NSMutableData dataWithLength:(NSUInteger)size]; if(read(fd,[data mutableBytes],[data length])==size) { NSError *parseError=nil; id value=[NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:NULL error:&parseError]; revoked=[value isKindOfClass:[NSDictionary class]] && [value objectForKey:@"enabled"] && ![[value objectForKey:@"enabled"] boolValue]; }
         }
     } close(fd); if(!revoked)return NO;
+#endif
     OSStatus status = SecItemDelete((CFDictionaryRef)RCConnectionQuery());
     return status == errSecSuccess || status == errSecItemNotFound;
 }
@@ -196,7 +198,9 @@ static size_t RCCompanionRead(char *bytes, size_t size, size_t count, void *poin
     OSStatus status = SecItemUpdate((CFDictionaryRef)query, (CFDictionaryRef)updates);
     if (status == errSecItemNotFound) {
         [query addEntriesFromDictionary:updates];
+#if !RC_LEGACY32
         [query setObject:(id)kSecAttrAccessibleWhenUnlockedThisDeviceOnly forKey:(id)kSecAttrAccessible];
+#endif
         status = SecItemAdd((CFDictionaryRef)query, NULL);
     }
     return status == errSecSuccess;

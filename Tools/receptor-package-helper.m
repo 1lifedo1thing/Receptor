@@ -243,7 +243,7 @@ static void WriteManagedSource(NSString *uri, BOOL remove) {
     if (valid && rename(buffer, [path fileSystemRepresentation])) valid = NO;
     if (!valid) unlink(buffer); free(buffer); Require(valid, @"Could not save sources; the old file was preserved.");
 }
-#if !defined(RC_PACKAGE_TEST) || defined(RC_REMOTE_HOST_TEST)
+#if (!defined(RC_PACKAGE_TEST) || defined(RC_REMOTE_HOST_TEST)) && !RC_LEGACY32
 static NSNumber *RemoteServiceInteger(NSString *text,NSString *key) {
     NSString *prefix=[NSString stringWithFormat:@"\"%@\"",key];
     for(NSString *raw in [text componentsSeparatedByString:@"\n"]) {
@@ -290,7 +290,10 @@ static NSDictionary *RemoteService(BOOL start) {
 }
 #endif
 static NSDictionary *RemoteConfiguration(NSArray *args) {
-#if defined(RC_PACKAGE_TEST) && !defined(RC_REMOTE_HOST_TEST)
+#if RC_LEGACY32
+    if([args count]==1 && ([[args objectAtIndex:0] isEqual:@"remote-status"] || [[args objectAtIndex:0] isEqual:@"remote-disable"])) return [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:NO],@"enabled",@"Background desktop access is disabled in the iPhone OS 3.2 build. Keep Receptor open for PC transfers.",@"output",nil];
+    Require(NO,@"Background desktop access is disabled in the iPhone OS 3.2 build."); return nil;
+#elif defined(RC_PACKAGE_TEST) && !defined(RC_REMOTE_HOST_TEST)
     (void)args; Require(NO,@"Remote setup requires the remote-service test harness."); return nil;
 #else
     NSString *operation=[args objectAtIndex:0],*configPath=Path(@"/var/lib/receptor/remote.plist");

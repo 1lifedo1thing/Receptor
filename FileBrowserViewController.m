@@ -43,7 +43,12 @@ static BOOL RCInstallingPackage(void) {
         _grid = ![[[NSUserDefaults standardUserDefaults] stringForKey:@"RCBrowserLayout"] isEqualToString:@"list"];
         _columns = 2;
         _sharing = [[RCFileShareController alloc] initWithViewController:self];
-        _thumbnailCache = [[NSCache alloc] init]; _thumbnailCache.totalCostLimit = 6 * 1024 * 1024; _thumbnailCache.countLimit = 128;
+#if RC_LEGACY32
+        _thumbnailCache=[[RC32Cache alloc] init];
+#else
+        _thumbnailCache = [[NSClassFromString(@"NSCache") alloc] init];
+#endif
+        _thumbnailCache.totalCostLimit = 6 * 1024 * 1024; _thumbnailCache.countLimit = 128;
         _thumbnailQueue = [[NSOperationQueue alloc] init]; _thumbnailQueue.maxConcurrentOperationCount = 1;
         _thumbnailPending = [[NSMutableSet alloc] init];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(downloadsChanged:)
@@ -229,12 +234,14 @@ static BOOL RCInstallingPackage(void) {
     NSString *key = [self artworkKeyForFile:name];
     id image = [_thumbnailCache objectForKey:key];
     if ([image isKindOfClass:[UIImage class]]) return image;
+#if !RC_LEGACY32
     if (!image && RCIsImageFile(name) && ![_thumbnailPending containsObject:key] && [_thumbnailPending count] < 48) {
         [_thumbnailPending addObject:key];
         NSDictionary *job = [NSDictionary dictionaryWithObjectsAndKeys:name, @"name", key, @"key", nil];
         NSInvocationOperation *operation = [[NSInvocationOperation alloc] initWithTarget:self selector:@selector(loadThumbnail:) object:job];
         [_thumbnailQueue addOperation:operation]; [operation release];
     }
+#endif
     NSString *genericKey = [@"generic:" stringByAppendingString:[[name pathExtension] uppercaseString]];
     UIImage *generic = [_thumbnailCache objectForKey:genericKey];
     if (!generic) { generic = RCFileIcon(name); if (generic) [_thumbnailCache setObject:generic forKey:genericKey cost:40000]; }
@@ -357,6 +364,10 @@ static BOOL RCInstallingPackage(void) {
         [self.navigationController pushViewController:image animated:YES]; [image release]; return;
     }
     NSURL *url = [NSURL fileURLWithPath:[RCDownloadsDirectory stringByAppendingPathComponent:name]];
+#if RC_LEGACY32
+    _legacyDocument.delegate=nil;[_legacyDocument release];_legacyDocument=[[UIDocumentInteractionController interactionControllerWithURL:url] retain];_legacyDocument.delegate=self;
+    if(![_legacyDocument presentPreviewAnimated:YES] && [self selectFile:name rect:self.tableView.bounds])[self openSelectedFileInApp];
+#else
     if ([QLPreviewController canPreviewItem:url]) {
         [_previewURLs release]; _previewURLs = [[NSArray alloc] initWithObjects:url, nil];
         QLPreviewController *preview = [[QLPreviewController alloc] init]; preview.dataSource = self;
@@ -364,6 +375,7 @@ static BOOL RCInstallingPackage(void) {
     } else {
         if ([self selectFile:name rect:self.tableView.bounds]) [self openSelectedFileInApp];
     }
+#endif
 }
 - (void)openSelectedFileInApp {
     [_sharing openFileInApp:_selectedPackage fromRect:_actionAnchor];
@@ -448,13 +460,17 @@ static BOOL RCInstallingPackage(void) {
     _searchBar.delegate = nil; [_searchBar release]; _searchBar = nil;
     [_layoutControl release]; _layoutControl = nil; [super viewDidUnload];
 }
+#if !RC_LEGACY32
 - (NSInteger)numberOfPreviewItemsInPreviewController:(QLPreviewController *)controller {
     (void)controller; return [_previewURLs count];
 }
 - (id<QLPreviewItem>)previewController:(QLPreviewController *)controller previewItemAtIndex:(NSInteger)index {
     (void)controller; return [_previewURLs objectAtIndex:index];
 }
+#endif
+- (UIViewController *)documentInteractionControllerViewControllerForPreview:(UIDocumentInteractionController *)controller {(void)controller;return self;}
 - (void)dealloc {
+    _legacyDocument.delegate=nil;[_legacyDocument release];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [_sharing release];
     [_files release]; [_activeDownloads release]; [_previewURLs release]; [_storageError release];

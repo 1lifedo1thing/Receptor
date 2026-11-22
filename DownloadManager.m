@@ -2,6 +2,7 @@
 #import "ReceptorPaths.h"
 #import "ReceptorUI.h"
 #import "RCCurlTransfer.h"
+#import "RCCompatibility32.h"
 #import <MobileCoreServices/UTType.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -76,9 +77,9 @@
         return NO;
     }
     // The system grants finite execution time, not a persistent background session.
-    _backgroundTask = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
+    _backgroundTask = RCBeginBackgroundTask(^{
         [self finish:RCError(@"Background time expired. Keep Safari open and retry the download.")];
-    }];
+    });
     [_transfer start];
     return YES;
 }

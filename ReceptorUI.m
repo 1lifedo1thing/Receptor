@@ -13,7 +13,12 @@
     if (!ui) ui = [[self alloc] init];
     return ui;
 }
-+ (void)install { [self sharedUI]; }
++ (void)install {
+#if RC_LEGACY32
+    (void)[[UIApplication sharedApplication] applicationState];
+#endif
+    [self sharedUI];
+}
 + (void)promptForRequest:(NSURLRequest *)request {
     ReceptorUI *ui = [self sharedUI];
     if ([ui->_requests count] >= 8 || [[ui->_promptRequest URL] isEqual:[request URL]]) return;
@@ -46,11 +51,15 @@
 - (void)showMessage:(NSString *)message {
     if (![message length]) return;
     if ([[UIApplication sharedApplication] applicationState] != UIApplicationStateActive) {
+#if !RC_LEGACY32
         UILocalNotification *notification = [[UILocalNotification alloc] init];
         notification.alertBody = [@"Receptor: " stringByAppendingString:message];
         notification.soundName = UILocalNotificationDefaultSoundName;
         [[UIApplication sharedApplication] presentLocalNotificationNow:notification];
         [notification release];
+#else
+        if ([_messages count] < 16) [_messages addObject:message];
+#endif
         return;
     }
     if ([_messages count] < 16) [_messages addObject:message];

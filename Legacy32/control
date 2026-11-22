@@ -1,0 +1,14 @@
+Package: com.receptor.downloadmanager.ios32
+Name: Receptor (iPhone OS 3.2)
+Version: 1.8.0b1
+Architecture: iphoneos-arm
+Description: Experimental iPad 1 / iPhone OS 3.2 port; foreground transfers, no background desktop service.
+Maintainer: Receptor
+Author: Receptor
+Section: Tweaks
+Depends: mobilesubstrate, dpkg, apt7 | apt, firmware (>= 3.2), firmware (<< 4.0)
+Conflicts: com.receptor.downloadmanager
+Replaces: com.receptor.downloadmanager
+Homepage: https://github.com/jajaengland/Receptor
+Depiction: https://jajaengland.github.io/repo/depictions/receptor32.html
+Icon: file:///Applications/Receptor.app/Icon.png

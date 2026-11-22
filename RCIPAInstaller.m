@@ -1,4 +1,5 @@
 #import "RCIPAInstaller.h"
+#import "RCCompatibility32.h"
 #import "ReceptorPaths.h"
 #import "ReceptorUI.h"
 #import "RCDEBInstaller.h"
@@ -78,10 +79,10 @@ static void RCInstallProgress(CFDictionaryRef information) {
     _operationLock=RCAcquireMobileOperationLock([RCDownloadsDirectory fileSystemRepresentation],501);
     if(_operationLock<0) { [[ReceptorUI sharedUI] showMessage:@"Another local or desktop installation is running. Wait for it to finish."]; return; }
     _busy = YES;
-    _backgroundTask = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
+    _backgroundTask = RCBeginBackgroundTask(^{
         UIBackgroundTaskIdentifier task = _backgroundTask; _backgroundTask = UIBackgroundTaskInvalid;
         if (task != UIBackgroundTaskInvalid) [[UIApplication sharedApplication] endBackgroundTask:task];
-    }];
+    });
     [self setInstallStatus:@"Installing…"];
     [NSThread detachNewThreadSelector:@selector(installOnWorker:) toTarget:self withObject:[[name copy] autorelease]];
 }

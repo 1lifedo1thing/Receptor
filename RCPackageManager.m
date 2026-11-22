@@ -1,4 +1,5 @@
 #import "RCPackageManager.h"
+#import "RCCompatibility32.h"
 #import "RCDEBInstaller.h"
 #import "RCIPAInstaller.h"
 #import "RCRespring.h"
@@ -20,7 +21,7 @@
     NSAssert([NSThread isMainThread], @"Main thread required");
     if (_busy || [[RCDEBInstaller sharedInstaller] busy] || [[RCIPAInstaller sharedInstaller] busy] || [[RCRespring sharedController] busy]) { [[ReceptorUI sharedUI] showMessage:@"Wait for the current installation, package operation or respring request to finish."]; return NO; }
     _busy = YES; _delegate = delegate;
-    _task = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{ UIBackgroundTaskIdentifier task = _task; _task = UIBackgroundTaskInvalid; if (task != UIBackgroundTaskInvalid) [[UIApplication sharedApplication] endBackgroundTask:task]; }];
+    _task = RCBeginBackgroundTask(^{ UIBackgroundTaskIdentifier task = _task; _task = UIBackgroundTaskInvalid; if (task != UIBackgroundTaskInvalid) [[UIApplication sharedApplication] endBackgroundTask:task]; });
     [NSThread detachNewThreadSelector:@selector(worker:) toTarget:self withObject:[[arguments copy] autorelease]]; return YES;
 }
 - (void)worker:(NSArray *)arguments {

@@ -1,3 +1,24 @@
+Package: com.receptor.downloadmanager.ios32
+Name: Receptor (iPhone OS 3.2)
+Description: Experimental iPad 1 / iPhone OS 3.2 port; foreground transfers, no background desktop service.
+Maintainer: Receptor
+Author: Receptor
+Section: Tweaks
+Depends: mobilesubstrate, dpkg, apt7 | apt, firmware (>= 3.2), firmware (<< 4.0)
+Conflicts: com.receptor.downloadmanager
+Replaces: com.receptor.downloadmanager
+Homepage: https://github.com/jajaengland/Receptor
+Depiction: https://jajaengland.github.io/repo/depictions/receptor32.html
+Icon: file:///Applications/Receptor.app/Icon.png
+Architecture: iphoneos-arm
+Version: 1.8.0b1
+Installed-Size: 2824
+Filename: debs/com.receptor.downloadmanager.ios32_1.8.0b1_iphoneos-arm.deb
+Size: 859194
+MD5sum: 3863e254eeb01cdc536dab17b34c861b
+SHA1: d08674b8ce8250587d439748b29d90801581d0fe
+SHA256: 79156c37c13a47f5a3b58771e8d37b2bff9ceaf3a809bc41b8a22ebda256e3ab
+
 Package: com.receptor.downloadmanager
 Name: Receptor
 Description: Safari downloads and a Quick Look file browser for iOS 4 through 6.

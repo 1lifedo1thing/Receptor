@@ -1,7 +1,14 @@
 #import <UIKit/UIKit.h>
+#if !RC_LEGACY32
 #import <QuickLook/QuickLook.h>
+#endif
 
-@interface RCFilesystemViewController : UITableViewController <QLPreviewControllerDataSource, UIActionSheetDelegate> {
+@interface RCFilesystemViewController : UITableViewController <
+#if !RC_LEGACY32
+QLPreviewControllerDataSource,
+#endif
+UIDocumentInteractionControllerDelegate, UIActionSheetDelegate> {
+    UIDocumentInteractionController *_legacyDocument;
     NSString *_path;
     NSArray *_entries;
     NSString *_status;

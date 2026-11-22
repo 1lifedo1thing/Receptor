@@ -55,9 +55,17 @@ def main():
         assert "Library/MobileSubstrate/DynamicLibraries/Receptor.dylib" in names
         assert "Library/MobileSubstrate/DynamicLibraries/Receptor.plist" in names
         if fields["Version"] != "1.0.0":
+            legacy32=fields['Package']=='com.receptor.downloadmanager.ios32'
+            deployment=0x30200 if legacy32 else 0x40000
             app = plistlib.loads(payload["Applications/Receptor.app/Info.plist"])
             assert app["CFBundleIdentifier"] == "com.receptor.app"
-            assert app["MinimumOSVersion"] == "4.0"
+            assert app["MinimumOSVersion"] == ('3.2' if legacy32 else '4.0')
+            if legacy32:
+                assert app['UIDeviceFamily']==[2]
+                assert 'firmware (>= 3.2)' in control and 'firmware (<< 4.0)' in control
+                assert 'Conflicts: com.receptor.downloadmanager' in control
+                assert not any(name.startswith('Library/LaunchDaemons/') or name.endswith(('receptor-remote-agent','receptor-file-helper')) for name in names)
+                assert b'launchctl' not in scripts['postinst'][1]
             # Relabeled beta-1 packages keep their original signed app payload intact.
             original = {"1.5.0b1": "1.5.0", "1.6.0b1": "1.6.0"}.get(fields["Version"], fields["Version"])
             assert app["CFBundleVersion"] == original
@@ -79,7 +87,7 @@ def main():
                     if command == 0x25:
                         minimum = struct.unpack_from("<II", binary, offset + 8)
                     offset += size
-                assert minimum == (0x40000, 0x50000)
+                assert minimum == (deployment, 0x50000)
             if "usr/libexec/receptor-package-helper" in payload:
                 name = "usr/libexec/receptor-package-helper"
                 helper = members_info[name]
@@ -95,7 +103,7 @@ def main():
                     command, size = struct.unpack_from("<II", binary, offset)
                     if command == 0x25: minimum = struct.unpack_from("<II", binary, offset + 8)
                     offset += size
-                assert minimum == (0x40000, 0x50000)
+                assert minimum == (deployment, 0x50000)
             if "usr/libexec/receptor-remote-agent" in payload:
                 for name in ['usr/libexec/receptor-remote-agent', 'usr/libexec/receptor-file-helper']:
                     member = members_info[name]
@@ -128,7 +136,7 @@ def main():
                     command, size = struct.unpack_from("<II", helper_bytes, offset)
                     if command == 0x25: minimum = struct.unpack_from("<II", helper_bytes, offset + 8)
                     offset += size
-                assert minimum == (0x40000, 0x50000)
+                assert minimum == (deployment, 0x50000)
     algorithm = None
     checks = 0
     for line in (ROOT / "Release").read_text().splitlines():

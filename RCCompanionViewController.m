@@ -92,6 +92,9 @@
     } else if (indexPath.section == 0) {
         cell.textLabel.text = indexPath.row == 2 ? @"Connect / Refresh" : indexPath.row==3 ? @"Forget saved connection" : @"Background desktop access…";
         cell.textLabel.textColor = _client.busy ? [UIColor grayColor] : [UIColor colorWithRed:0 green:0.35f blue:0.75f alpha:1];
+#if RC_LEGACY32
+        if(indexPath.row==4) {cell.textLabel.text=@"Background access unavailable (3.2)";cell.textLabel.textColor=[UIColor grayColor];}
+#endif
     } else {
         NSDictionary *file = [_packages objectAtIndex:indexPath.row];
         cell.textLabel.text = [file objectForKey:@"name"];
@@ -106,9 +109,20 @@
     [_address resignFirstResponder]; [_code resignFirstResponder];
     NSError *error = nil;
     if (indexPath.section == 0) {
-        if(indexPath.row==4) { RCBackgroundViewController *controller=[[RCBackgroundViewController alloc] initWithPublicKey:_client.remotePublicKey host:_client.host]; [self.navigationController pushViewController:controller animated:YES]; [controller release]; return; }
+        if(indexPath.row==4) {
+#if RC_LEGACY32
+            [self setStatus:@"Background desktop access is disabled on iPhone OS 3.2. Keep Receptor open for desktop file transfers."];
+#else
+            RCBackgroundViewController *controller=[[RCBackgroundViewController alloc] initWithPublicKey:_client.remotePublicKey host:_client.host]; [self.navigationController pushViewController:controller animated:YES]; [controller release];
+#endif
+            return;
+        }
         if (indexPath.row == 3) {
-            _forgetPrompt=[[UIAlertView alloc] initWithTitle:@"Forget saved connection?" message:@"This removes the saved PC pairing from this device and revokes background desktop access. You will need to pair again. A package operation already running may finish." delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Forget",nil];
+            NSString *warning=@"This removes the saved PC pairing from this device and revokes background desktop access. You will need to pair again. A package operation already running may finish.";
+#if RC_LEGACY32
+            warning=@"This removes the saved PC pairing from this device. You will need to pair again for desktop file transfers.";
+#endif
+            _forgetPrompt=[[UIAlertView alloc] initWithTitle:@"Forget saved connection?" message:warning delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Forget",nil];
             [_forgetPrompt show];
         } else [self connect];
     } else {
@@ -126,7 +140,11 @@
     _client = [[RCCompanionClient alloc] init]; _client.delegate = self;
     [_packages release]; _packages = nil;
     _address.text = @""; _code.text = @""; _code.placeholder = @"ABCD-EFGH";
+#if RC_LEGACY32
+    [self setStatus:@"Saved connection forgotten on this device. Enter an address and short code to pair again."];
+#else
     [self setStatus:@"Saved connection forgotten and background access revoked on this device. Enter an address and short code to pair again."];
+#endif
 }
 - (void)companion:(RCCompanionClient *)client finished:(NSDictionary *)result {
     (void)client;

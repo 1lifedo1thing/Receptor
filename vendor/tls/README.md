@@ -4,6 +4,8 @@ Receptor statically links curl **8.23.0** and Mbed TLS **3.6.7 LTS**, compiled f
 
 Rebuild the static archives with `bash scripts/build-tls.sh`. Official upstream source archives are downloaded into ignored `build/tls-cache/` and SHA256-checked before compilation:
 
+The separate experimental 3.2 build uses the same pinned sources/configuration rebuilt with `RECEPTOR_MIN_IOS=3.2`, writing archives to `vendor/tls32/lib/`. Its 309 archive objects are checked for a 3.2 deployment target. The normal archives in this directory remain at 4.0; see [legacy port notes](../../Legacy32/README.md).
+
 The vendored public Mbed TLS/PSA headers come from that same pinned archive and are copied by the build script alongside the libraries. Receptor 1.8.0 uses the existing RSA implementation for background enrollment, with the same threading/platform configuration flags used to build the archives. CommonCrypto supplies device AES/HMAC; the host-test adapter uses OpenSSL instead and cannot be compiled in Apple production builds.
 
 | Archive | SHA256 |

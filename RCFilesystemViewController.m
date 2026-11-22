@@ -105,18 +105,27 @@
 - (void)actionSheet:(UIActionSheet *)sheet didDismissWithButtonIndex:(NSInteger)index {
     if (sheet != _actions || index < 0 || index == sheet.cancelButtonIndex) return;
     if (index == 0) {
+#if RC_LEGACY32
+        _legacyDocument.delegate=nil;[_legacyDocument release];_legacyDocument=[[UIDocumentInteractionController interactionControllerWithURL:_selectedURL] retain];_legacyDocument.delegate=self;
+        if(![_legacyDocument presentPreviewAnimated:YES])[self showError:@"The 3.2 document preview does not support this file. Send it to your PC or use a compatible app."];
+#else
         if (![QLPreviewController canPreviewItem:_selectedURL]) { [self showError:@"Quick Look cannot preview this file type. You can send it to your PC instead."]; return; }
         QLPreviewController *preview = [[QLPreviewController alloc] init]; preview.dataSource = self;
         [self.navigationController pushViewController:preview animated:YES]; [preview release];
+#endif
     } else if (index == 1) {
         RCSendFileViewController *send = [[RCSendFileViewController alloc] initWithPath:[_selectedURL path]];
         [self.navigationController pushViewController:send animated:YES]; [send release];
     }
 }
+#if !RC_LEGACY32
 - (NSInteger)numberOfPreviewItemsInPreviewController:(QLPreviewController *)controller { (void)controller; return _selectedURL ? 1 : 0; }
 - (id<QLPreviewItem>)previewController:(QLPreviewController *)controller previewItemAtIndex:(NSInteger)index { (void)controller; (void)index; return _selectedURL; }
+#endif
+- (UIViewController *)documentInteractionControllerViewControllerForPreview:(UIDocumentInteractionController *)controller {(void)controller;return self;}
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)orientation { return UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad || orientation != UIInterfaceOrientationPortraitUpsideDown; }
 - (void)dealloc {
+    _legacyDocument.delegate=nil;[_legacyDocument release];
     _actions.delegate = nil; [_actions dismissWithClickedButtonIndex:_actions.cancelButtonIndex animated:NO]; [_actions release];
     [_path release]; [_entries release]; [_status release]; [_selectedURL release]; [super dealloc];
 }
